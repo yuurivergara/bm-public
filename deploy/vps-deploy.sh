@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Deploy manual do PC para a VPS, sem GitHub/GHCR (ponte até o fluxo Actions → Coolify).
+# Deploy manual do PC para a VPS, sem GitHub/GHCR (o caminho normal é .github/workflows/deploy.yml).
 #
-#   deploy/vps-deploy.sh            # build local → envia a imagem por SSH → compose up
+#   deploy/vps-deploy.sh            # build local → envia as imagens por SSH → bm-deploy na VPS
 #
 # Na VPS, a pilha fica em /opt/bm-platform. Os segredos ficam em /opt/bm-platform/.env (600),
 # gerados NA VPS na primeira execução e nunca exibidos. Copie MASTER_KEY e PHONE_HASH_PEPPER
@@ -25,9 +25,10 @@ echo "== enviando imagens para $HOST"
 docker save "$IMAGE:$TAG" "$IMAGE:staging" "$SIM_IMAGE:$TAG" "$SIM_IMAGE:staging" \
   | gzip -1 | ssh "$HOST" 'gunzip | docker load -q'
 
-echo "== arquivos de compose"
+echo "== script de deploy da VPS (/usr/local/sbin/bm-deploy)"
 ssh "$HOST" "install -d -m 750 $DIR"
-scp -q deploy/docker-compose.prod.yml deploy/docker-compose.vps.yml deploy/docker-compose.sim.yml "$HOST:$DIR/"
+scp -q deploy/bm-deploy.sh "$HOST:/tmp/bm-deploy.sh"
+ssh "$HOST" "install -o root -g root -m 755 /tmp/bm-deploy.sh /usr/local/sbin/bm-deploy && rm /tmp/bm-deploy.sh"
 
 echo "== segredos (gerados na VPS só se ainda não existirem)"
 ssh "$HOST" "API_HOST='$API_HOST' DIR='$DIR' bash -s" <<'REMOTE'
@@ -50,13 +51,5 @@ chmod 600 "$ENV"
 echo "variáveis definidas: $(cut -d= -f1 "$ENV" | tr '\n' ' ')"
 REMOTE
 
-echo "== subindo"
-ssh "$HOST" "cd $DIR && docker compose -p bm-platform --env-file .env -f docker-compose.prod.yml -f docker-compose.vps.yml -f docker-compose.sim.yml up -d --wait --remove-orphans 2>&1 | tail -5"
-
-echo "== smoke test"
-for _ in $(seq 1 24); do
-  if curl -fsS "https://$API_HOST/readyz" 2>/dev/null; then echo; echo "ok: https://$API_HOST ($TAG)"; exit 0; fi
-  sleep 5
-done
-echo "readyz não respondeu em https://$API_HOST" >&2
-exit 1
+echo "== implantando"
+ssh "$HOST" "/usr/local/sbin/bm-deploy 'deploy $TAG' </dev/null"

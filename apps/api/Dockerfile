@@ -12,6 +12,8 @@ ENV NODE_ENV=production
 WORKDIR /app
 RUN addgroup -S app && adduser -S app -G app
 COPY --from=build --chown=app:app /out ./
+# Arquivos de compose da mesma versão: o deploy na VPS (deploy/bm-deploy.sh) os extrai da imagem.
+COPY deploy/docker-compose.prod.yml deploy/docker-compose.vps.yml deploy/docker-compose.sim.yml /app/deploy/
 USER app
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=3s CMD wget -qO- http://127.0.0.1:3000/healthz || exit 1

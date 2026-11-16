@@ -1,14 +1,15 @@
 name: Deploy (staging)
 
-# Depois que o CI passa no master: constrói a imagem, publica no GHCR e pede à Coolify para
-# reimplantar o recurso (que puxa a imagem nova com pull_policy: always). Também pode ser
-# disparado manualmente (Actions → Deploy → Run workflow), a partir de qualquer branch.
+# Depois que o CI passa no master: constrói as imagens (API e meta-sim), publica no GHCR e
+# implanta na VPS por SSH. A chave do Actions só pode executar `deploy <sha>` (comando forçado
+# no authorized_keys do usuário `deploy` → /usr/local/sbin/bm-deploy, ver deploy/bm-deploy.sh).
+# Também pode ser disparado manualmente (Actions → Deploy → Run workflow).
 #
-# Configuração no GitHub (Settings → Environments → staging):
-#   vars.COOLIFY_URL            ex.: https://coolify.comano.tech
-#   vars.COOLIFY_RESOURCE_UUID  UUID do recurso na Coolify
-#   vars.STAGING_URL            ex.: https://bm.179-197-76-7.sslip.io (smoke test do /readyz)
-#   secrets.COOLIFY_TOKEN       token da API da Coolify com permissão "deploy"
+# Configuração (Settings → Environments → staging), já feita:
+#   secrets.VPS_SSH_KEY    chave privada dedicada (github-actions-bm-deploy)
+#   vars.VPS_HOST          IP da VPS
+#   vars.VPS_KNOWN_HOSTS   chave de host da VPS (ssh-keyscan), evita aceitar host desconhecido
+#   vars.STAGING_URL       ex.: https://bm.179-197-76-7.sslip.io
 
 on:
   workflow_run:
@@ -32,12 +33,14 @@ jobs:
     timeout-minutes: 25
     environment: staging
     env:
-      IMAGE: ghcr.io/${{ github.repository_owner }}/bm-api
       SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ env.SHA }}
+
+      - name: Tag curta
+        run: echo "TAG=${SHA::7}" >> "$GITHUB_ENV"
 
       - uses: docker/setup-buildx-action@v3
 
@@ -47,65 +50,51 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build e push da imagem
+      - name: Build e push da API
         uses: docker/build-push-action@v6
         with:
           context: .
           file: apps/api/Dockerfile
           push: true
           tags: |
-            ${{ env.IMAGE }}:${{ env.SHA }}
-            ${{ env.IMAGE }}:staging
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+            ghcr.io/yuurivergara/bm-api:${{ env.TAG }}
+            ghcr.io/yuurivergara/bm-api:staging
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,mode=max,scope=api
+          # liga o pacote ao repositório: o GITHUB_TOKEN do job consegue baixá-lo na VPS
+          labels: org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
 
       # Simulador da Meta usado no staging (docker-compose.sim.yml); nunca exposto publicamente.
-      - name: Build e push da imagem do meta-sim
+      - name: Build e push do meta-sim
         uses: docker/build-push-action@v6
         with:
           context: .
           file: apps/meta-sim/Dockerfile
           push: true
           tags: |
-            ghcr.io/${{ github.repository_owner }}/bm-meta-sim:${{ env.SHA }}
-            ghcr.io/${{ github.repository_owner }}/bm-meta-sim:staging
+            ghcr.io/yuurivergara/bm-meta-sim:${{ env.TAG }}
+            ghcr.io/yuurivergara/bm-meta-sim:staging
           cache-from: type=gha,scope=meta-sim
           cache-to: type=gha,mode=max,scope=meta-sim
+          # liga o pacote ao repositório: o GITHUB_TOKEN do job consegue baixá-lo na VPS
+          labels: org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
 
-      - name: Disparar deploy na Coolify
-        id: trigger
+      - name: Implantar na VPS
         env:
-          COOLIFY_URL: ${{ vars.COOLIFY_URL }}
-          COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
-          RESOURCE: ${{ vars.COOLIFY_RESOURCE_UUID }}
+          SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          KNOWN_HOSTS: ${{ vars.VPS_KNOWN_HOSTS }}
+          HOST: ${{ vars.VPS_HOST }}
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          # Coolify 4.7.5: POST /api/v1/deploy → {"deployments":[{"resource_uuid","deployment_uuid","message"}]}
-          resp=$(curl -fsS -X POST -H "Authorization: Bearer $COOLIFY_TOKEN" \
-            "$COOLIFY_URL/api/v1/deploy?uuid=$RESOURCE&force=false")
-          echo "$resp" | jq -r '.deployments[] | "\(.resource_uuid): \(.message // "")"'
-          dep=$(echo "$resp" | jq -r '.deployments[0].deployment_uuid // empty')
-          [ -n "$dep" ] || { echo "a Coolify não devolveu deployment_uuid"; exit 1; }
-          echo "deployment=$dep" >> "$GITHUB_OUTPUT"
-
-      - name: Aguardar o fim do deploy
-        env:
-          COOLIFY_URL: ${{ vars.COOLIFY_URL }}
-          COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
-          DEP: ${{ steps.trigger.outputs.deployment }}
-        run: |
-          set -euo pipefail
-          for _ in $(seq 1 90); do
-            status=$(curl -fsS -H "Authorization: Bearer $COOLIFY_TOKEN" \
-              "$COOLIFY_URL/api/v1/deployments/$DEP" | jq -r '.status')
-            echo "status: $status"
-            case "$status" in
-              finished) exit 0 ;;
-              failed|cancelled-by-user) echo "deploy terminou com $status (veja os logs na Coolify)"; exit 1 ;;
-            esac
-            sleep 10
-          done
-          echo "tempo esgotado aguardando o deploy"; exit 1
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key && chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          # O token do GHCR vai pelo stdin (nunca na linha de comando) e expira ao fim do job.
+          printf '%s\n%s\n' "$GHCR_USER" "$GHCR_TOKEN" \
+            | ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+                "deploy@$HOST" "deploy $TAG"
 
       - name: Smoke test
         env:
@@ -116,3 +105,7 @@ jobs:
             sleep 5
           done
           echo "readyz não respondeu"; exit 1
+
+      - name: Limpar chave
+        if: always()
+        run: rm -f ~/.ssh/deploy_key

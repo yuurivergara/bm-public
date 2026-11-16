@@ -1,12 +1,14 @@
-# Deploy na VPS (D-16)
+# Deploy na VPS (D-16, D-16a, D-16b)
 
 Staging roda na **VPS BMS** (Hostinger, Campinas), que já tem **Coolify 4.7.5** com Traefik nas
-portas 80/443. Fluxo:
+portas 80/443. A Coolify entra só como **proxy/TLS** (Traefik + Let's Encrypt, domínio sslip). O
+deploy é por SSH com comando forçado (D-16b):
 
 ```
-push no master → CI verde → deploy.yml: build da imagem → GHCR (:sha e :staging)
-               → POST /api/v1/deploy na Coolify → Coolify puxa a imagem (pull_policy: always)
-               → migrate (one-shot) → api → smoke test /readyz
+push no master → CI verde → deploy.yml: build das imagens (API + meta-sim) → GHCR (:sha7 e :staging)
+   → ssh deploy@VPS "deploy <sha7>"   (a chave só executa /usr/local/sbin/bm-deploy)
+   → bm-deploy: login GHCR com o GITHUB_TOKEN do job → pull → extrai os composes da imagem
+   → migrate (one-shot) → api + meta-sim → smoke test /readyz
 ```
 
 > ⚠️ **Isolamento:** a VPS BMS também roda a Vendra (com Evolution) e o `copy-whats` (Baileys).
@@ -15,49 +17,56 @@ push no master → CI verde → deploy.yml: build da imagem → GHCR (:sha e :st
 
 ## Arquivos
 
-| Arquivo                          | Função                                                                                                                                 |
-| -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `deploy/provision.sh`            | Endurecimento idempotente (usuário sem root, SSH só por chave, atualizações automáticas, ufw + DOCKER-USER, swap). Dry-run por padrão. |
-| `deploy/docker-compose.prod.yml` | Pilha lida pela Coolify: `bm-postgres` → `migrate` → `api`. Nenhuma porta publicada.                                                   |
-| `deploy/docker-compose.vps.yml`  | Override da ponte manual: rede `coolify` + labels do Traefik (domínio `API_HOST`).                                                     |
-| `deploy/docker-compose.sim.yml`  | Override de staging: sobe o **meta-sim** (sem porta publicada) e aponta `META_GRAPH_BASE_URL` para ele.                                |
-| `deploy/vps-deploy.sh`           | Deploy pela ponte: build local → `docker load` na VPS → compose up → smoke test.                                                       |
-| `deploy/staging-e2e.sh`          | Teste ponta a ponta no staging: login+TOTP → webhook (verificação/assinatura) → cadastro de ativos → webhook do sim → sync.            |
-| `.github/workflows/deploy.yml`   | Build/push no GHCR (API + meta-sim) e deploy via API da Coolify, com espera do resultado e smoke test.                                 |
+| Arquivo                                             | Função                                                                                                                                                     |
+| --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `deploy/provision.sh`                               | Endurecimento idempotente (usuário sem root, SSH só por chave, atualizações automáticas, ufw + DOCKER-USER, swap). Dry-run por padrão.                     |
+| `deploy/docker-compose.prod.yml`                    | Pilha: `bm-postgres` → `migrate` → `api`. Nenhuma porta publicada.                                                                                         |
+| `deploy/docker-compose.vps.yml`                     | Rede `coolify` + labels do Traefik (domínio `API_HOST`).                                                                                                   |
+| `deploy/docker-compose.sim.yml`                     | Staging: sobe o **meta-sim** (sem porta publicada) e aponta `META_GRAPH_BASE_URL` para ele.                                                                |
+| `deploy/bm-deploy.sh`                               | Script do lado da VPS (`/usr/local/sbin/bm-deploy`): implanta uma tag, fixa `IMAGE_TAG` no `.env`, smoke test. Os composes vêm de dentro da imagem da API. |
+| `deploy/vps-deploy.sh`                              | Ponte manual do PC: build local → `docker load` na VPS → instala o `bm-deploy` → implanta.                                                                 |
+| `deploy/staging-e2e.sh`                             | Teste ponta a ponta no staging: login+TOTP → webhook (verificação/assinatura) → cadastro de ativos → webhook do sim → sync.                                |
+| `deploy/staging-lib.sh` / `staging-add-operator.sh` | Login de serviço (senha + TOTP) e criação de operadores pela API.                                                                                          |
+| `deploy/set-meta-app.sh`                            | Troca o simulador pelo app real da Meta (pede o app secret sem eco e grava só na VPS).                                                                     |
+| `.github/workflows/deploy.yml`                      | Caminho normal: build/push no GHCR e deploy por SSH, com smoke test.                                                                                       |
 
 ## Estado atual (2026-11-16)
 
-- ✅ VPS BMS endurecida com `provision.sh` (sem `--close-coolify-ports`). O ufw foi ligado com
-  rollback automático armado. Depois de conferir SSH, Vendra, pay, Coolify e a saída dos containers,
-  o rollback foi cancelado.
-- ✅ Staging no ar em **https://bm.179-197-76-7.sslip.io**, pela ponte `deploy/vps-deploy.sh`
-  (pilha em `/opt/bm-platform`, roteada pelo Traefik da Coolify, mesmo padrão de `/opt/vendra`).
-- ✅ S2 no staging: migration 0002 aplicada, meta-sim rodando na rede interna, `deploy/staging-e2e.sh`
-  passando de ponta a ponta (webhook assinado entregue pela URL pública e processado).
-- ✅ Conta operacional de teste `owner@staging.local` (usada pelo e2e). Senha e segredo TOTP só na VPS,
-  em `/opt/bm-platform/.owner` (600). Crie a sua conta de operador separadamente (abaixo).
-- ⏳ Fluxo GitHub Actions → GHCR → Coolify: depende do push do repositório (com escopo `workflow`) e
-  dos passos 2 e 3 abaixo. Ao migrar para a Coolify, pare a ponte com
-  `docker compose -p bm-platform down` (o volume `bm-platform_bm-pgdata` continua lá).
+- ✅ VPS endurecida com `provision.sh` (sem `--close-coolify-ports`): ufw (22, 80, 443) + DOCKER-USER,
+  SSH só por chave, usuário `deploy`, atualizações automáticas sem reboot.
+- ✅ Staging no ar em **https://bm.179-197-76-7.sslip.io** (pilha `bm-platform` em `/opt/bm-platform`,
+  roteada pelo Traefik da Coolify).
+- ✅ S2 no staging: migration 0002 aplicada, meta-sim na rede interna, `deploy/staging-e2e.sh` passando.
+- ✅ GitHub (environment `staging`) configurado: `VPS_SSH_KEY`, `VPS_HOST`, `VPS_KNOWN_HOSTS`,
+  `STAGING_URL`. Chave `github-actions-bm-deploy` instalada com comando forçado.
+- ⏳ Primeiro deploy pelo Actions: depende do push com escopo `workflow`
+  (`gh auth refresh -h github.com -s workflow`) e do merge no `master`.
+- ⏳ Reboot pendente do kernel (ver Operação).
 
-## Deploy manual (ponte, sem GitHub)
+## Segredos
 
-```bash
-deploy/vps-deploy.sh     # build local → docker save | ssh docker load → compose up → smoke test
-```
+Gerados **na VPS** na primeira execução da ponte, em `/opt/bm-platform/.env` (600), nunca exibidos
+pelos scripts. Copie para o cofre de senhas: `ssh bms-vps cat /opt/bm-platform/.env`.
 
-Os segredos são gerados **na VPS** na primeira execução, em `/opt/bm-platform/.env` (permissão 600).
-Copie `MASTER_KEY` e `PHONE_HASH_PEPPER` para o cofre: `ssh bms-vps cat /opt/bm-platform/.env`.
-`META_APP_SECRET` e `META_WEBHOOK_VERIFY_TOKEN` gerados ali são **do simulador**. Para ligar o app real da
-Meta, troque os dois pelo app secret do App Dashboard e pelo verify token que você cadastrar no painel de
-webhooks, defina `META_APP_ID` e suba **sem** `-f docker-compose.sim.yml` (ou mantenha o sim só para testes).
+- `MASTER_KEY`: sem ela não dá para decifrar tokens Meta e segredos TOTP.
+- `PHONE_HASH_PEPPER`: sem ele a deduplicação e a supressão param de bater.
+- `META_APP_SECRET` / `META_WEBHOOK_VERIFY_TOKEN` / `SIM_DEMO_TOKEN`: **do simulador** até rodar
+  `deploy/set-meta-app.sh`.
 
-Teste ponta a ponta (repetível):
+Contas no staging: `owner@staging.local` é a conta de teste do e2e (credenciais em
+`/opt/bm-platform/.owner`). Operadores são criados com `deploy/staging-add-operator.sh <email> <nome> [papel]`
+(pela API, auditado); a senha inicial fica em `/opt/bm-platform/.operator-<email>` e o TOTP é cadastrado
+no primeiro login.
 
-```bash
-deploy/staging-e2e.sh
-```
-Primeiro operador:
+## Deploy
+
+- **Normal:** merge no `master` → CI → _Deploy (staging)_. Manual: Actions → _Deploy (staging)_ → _Run workflow_.
+- **Ponte (sem GitHub):** `deploy/vps-deploy.sh`.
+- **Rollback:** `ssh bms-vps "/usr/local/sbin/bm-deploy 'deploy <sha7>' </dev/null"` (a imagem precisa
+  estar na VPS; as do GHCR ficam lá depois do primeiro pull) ou rode o workflow no commit antigo.
+- **Teste ponta a ponta:** `deploy/staging-e2e.sh`.
+
+Para criar outro operador:
 
 ```bash
 ssh bms-vps "docker exec -it -e OWNER_EMAIL=... -e OWNER_NAME=... -e OWNER_PASSWORD='...' \
@@ -68,7 +77,7 @@ ssh bms-vps "docker exec -it -e OWNER_EMAIL=... -e OWNER_NAME=... -e OWNER_PASSW
 > serviço se chama `bm-postgres`. Nunca use nomes genéricos (`postgres`, `redis`, `db`) em
 > serviços que entram nessa rede.
 
-## 1. Endurecer a VPS (uma vez)
+## Endurecer uma VPS (uma vez)
 
 ```bash
 scp deploy/provision.sh bms-vps:/root/provision.sh
@@ -88,57 +97,22 @@ pelo domínio. Para desfazer, remova o bloco `bm-platform DOCKER-USER` de `/etc/
 Observação: portas publicadas pelo Docker não passam pelas regras do `ufw`. Por isso o bloqueio
 fica na chain `DOCKER-USER`.
 
-## 2. Configurar a Coolify (uma vez, pelo painel)
-
-1. **Registry:** Servidor → _Registries_ → `ghcr.io`, com usuário do GitHub e um _PAT classic_
-   que tenha só `read:packages`.
-2. **Projeto novo** `bm-platform` (separado de Comano/Vendra/Assinaturas) → ambiente `staging`.
-3. **Recurso:** _Private Repository (with Deploy Key)_ → `git@github.com:yuurivergara/bm-public.git`,
-   branch `master`, build pack **Docker Compose**, arquivo `/deploy/docker-compose.prod.yml`.
-   Adicione a deploy key (somente leitura) ao repositório no GitHub.
-4. **Domínio do serviço `api`:** `https://bm.179-197-76-7.sslip.io`. O Let's Encrypt já emite
-   certificado para `*.179-197-76-7.sslip.io` nessa VPS, e os webhooks da Meta exigem HTTPS.
-5. **Variáveis:** as `SERVICE_PASSWORD_*` são geradas sozinhas. Gere localmente e cadastre:
-
-   ```bash
-   openssl rand -base64 32   # MASTER_KEY
-   openssl rand -base64 32   # PHONE_HASH_PEPPER
-   ```
-
-   **Guarde as duas no cofre de senhas.** Sem a `MASTER_KEY` não dá para decifrar os tokens Meta
-   e os segredos TOTP. Sem o `PHONE_HASH_PEPPER`, a deduplicação e a supressão param de bater.
-   Meta (obrigatórias): `META_APP_SECRET` (App Dashboard → Configurações → Básico) e
-   `META_WEBHOOK_VERIFY_TOKEN` (`openssl rand -hex 24`, o mesmo cadastrado no painel de webhooks);
-   opcional `META_APP_ID`. Callback dos webhooks: `https://bm.179-197-76-7.sslip.io/webhooks/meta`.
-   Opcional: `APP_ENV` (padrão `staging`), `LOG_LEVEL`, `IMAGE_TAG` (padrão `staging`).
-6. **Desligue o auto-deploy por webhook do Git** na Coolify. O deploy vem do GitHub Actions, depois do CI.
-7. **Token de API:** Keys & Tokens → token com permissão `deploy` (e `read`).
-
-## 3. Configurar o GitHub (uma vez)
-
-Settings → Environments → `staging`:
-
-| Tipo     | Nome                    | Valor                                                  |
-| -------- | ----------------------- | ------------------------------------------------------ |
-| variable | `COOLIFY_URL`           | `https://coolify.comano.tech`                          |
-| variable | `COOLIFY_RESOURCE_UUID` | UUID do recurso (aparece na URL do recurso na Coolify) |
-| variable | `STAGING_URL`           | `https://bm.179-197-76-7.sslip.io`                     |
-| secret   | `COOLIFY_TOKEN`         | token do passo 2.7                                     |
-
-## 4. Primeiro operador
-
-No terminal do container `api` (pela Coolify) ou via SSH:
+**Chave do GitHub Actions** (já instalada na VPS BMS). Para outra VPS:
 
 ```bash
-OWNER_EMAIL=... OWNER_NAME=... OWNER_PASSWORD='...' node dist/scripts/create-owner.js
+ssh-keygen -t ed25519 -N "" -C github-actions-bm-deploy -f /tmp/k
+gh secret set VPS_SSH_KEY --env staging < /tmp/k && shred -u /tmp/k
+printf 'command="sudo -n /usr/local/sbin/bm-deploy \\"$SSH_ORIGINAL_COMMAND\\"",restrict %s\n' "$(cat /tmp/k.pub)" \
+  | ssh <vps> 'cat >> ~deploy/.ssh/authorized_keys'
+gh variable set VPS_KNOWN_HOSTS --env staging < <(ssh-keyscan -t ed25519 <ip>)
 ```
 
 ## Operação
 
-- **Rollback:** defina `IMAGE_TAG=<sha>` nas variáveis da Coolify e reimplante (cada build publica `:sha`).
-- **Deploy manual:** Actions → _Deploy (staging)_ → _Run workflow_.
 - **Kernel/reboot:** as atualizações automáticas não reiniciam a máquina (há produção de terceiros
-  no host). Quando existir `/var/run/reboot-required`, agende uma janela.
+  no host). Quando existir `/var/run/reboot-required`, agende uma janela de madrugada. Todos os
+  containers do host têm política de restart (`unless-stopped`/`always`); confira depois com
+  `docker ps` (Vendra, bms, Coolify, bm-platform).
 
 ## Pendente antes do piloto (D-16)
 
