@@ -1,0 +1,15 @@
+#!/bin/bash
+# archive_command do Postgres: envia o segmento de WAL cifrado ao destino de backup.
+# Falha → o Postgres guarda o segmento e tenta de novo (nada se perde; o disco cresce, por isso o
+# backup avisa quando o arquivamento está parado).
+set -uo pipefail
+source /usr/local/bin/bm-walg-env
+if [[ -z "$(walg_target)" ]]; then
+  # Backup desligado (sem destino): descarta o segmento para o disco não encher.
+  exit 0
+fi
+if [[ -z "${WALG_LIBSODIUM_KEY:-}" ]]; then
+  echo "bm-wal-archive: WALG_LIBSODIUM_KEY ausente; nada é enviado sem criptografia" >&2
+  exit 1
+fi
+exec wal-g wal-push "$1"

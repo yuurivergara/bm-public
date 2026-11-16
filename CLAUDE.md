@@ -70,7 +70,8 @@ Definição de pronto: lint, typecheck e testes verdes; CI (`.github/workflows/c
   projeto compose `bm-platform`, com meta-sim). Deploy oficial: Actions → GHCR → `ssh deploy@… "deploy <sha>"`
   (comando forçado `deploy/bm-deploy.sh`); ponte manual `deploy/vps-deploy.sh`; teste ponta a ponta
   `deploy/staging-e2e.sh`; app real da Meta: `deploy/set-meta-app.sh`. Merge no master dispara o deploy (ativo desde o PR #1).
-  Pendente antes do piloto: backup contínuo do Postgres fora da VPS + restauração testada, e decidir a VPS de
+  Backup: WAL-G (`deploy/postgres/`, serviço `bm-backup`) com restauração testada; destino ainda local.
+  Pendente antes do piloto: destino do backup fora da VPS (R2/B2) + monitor externo, e decidir a VPS de
   produção (página `decisoes/2026-11-16-infra-producao.html`).
 
 ## Infra / VPS (D-16)
