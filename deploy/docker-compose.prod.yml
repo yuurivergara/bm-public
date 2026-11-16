@@ -68,6 +68,9 @@ services:
     image: ghcr.io/yuurivergara/bm-postgres:${PG_IMAGE_TAG:?defina PG_IMAGE_TAG (deploy/postgres/tag.sh)}
     pull_policy: ${PULL_POLICY:-always}
     restart: unless-stopped
+    # O padrão do Docker (64 MB) é pouco para vacuum/índices paralelos: "could not resize shared
+    # memory segment … No space left on device" ao limpar 1M contatos no staging.
+    shm_size: 256m
     # Backup contínuo: cada segmento de WAL vai cifrado para o destino; archive_timeout fecha um
     # segmento a cada 5 min no máximo (RPO ≤ 5 min, docs/02-arquitetura.md).
     command:
@@ -110,6 +113,7 @@ services:
     image: ghcr.io/yuurivergara/bm-postgres:${PG_IMAGE_TAG}
     pull_policy: ${PULL_POLICY:-always}
     restart: unless-stopped
+    shm_size: 128m # o teste de restauração sobe um Postgres aqui dentro
     user: postgres
     command: ["bm-backup", "loop"]
     depends_on:
