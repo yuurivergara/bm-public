@@ -69,7 +69,7 @@ Definição de pronto: lint, typecheck e testes verdes; CI (`.github/workflows/c
 - 🟡 Infra (D-16/D-16a/D-16b): staging no ar em https://bm.179-197-76-7.sslip.io (VPS BMS, `/opt/bm-platform`,
   projeto compose `bm-platform`, com meta-sim). Deploy oficial: Actions → GHCR → `ssh deploy@… "deploy <sha>"`
   (comando forçado `deploy/bm-deploy.sh`); ponte manual `deploy/vps-deploy.sh`; teste ponta a ponta
-  `deploy/staging-e2e.sh`; app real da Meta: `deploy/set-meta-app.sh`. Falta push com escopo `workflow`.
+  `deploy/staging-e2e.sh`; app real da Meta: `deploy/set-meta-app.sh`. Merge no master dispara o deploy (ativo desde o PR #1).
   Pendente antes do piloto: backup contínuo do Postgres fora da VPS + restauração testada, e decidir a VPS de
   produção (página `decisoes/2026-11-16-infra-producao.html`).
 
