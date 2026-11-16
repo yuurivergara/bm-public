@@ -270,13 +270,14 @@ sequenceDiagram
 
 ### 4.3 Webhooks
 1. `GET /webhooks/meta` responde o desafio de verificação (`hub.verify_token`).
-2. `POST /webhooks/meta` valida `X-Hub-Signature-256` (HMAC SHA-256 com app secret), grava o evento bruto (`webhook_events`) e enfileira — responde 200 em < 500 ms.
-3. `webhook-processor` roteia por campo (`messages`, `message_template_status_update`, `phone_number_quality_update`, `account_update`, … ⚠️ lista a validar) com deduplicação por chave (`wamid + status` ou hash do payload).
+2. `POST /webhooks/meta` valida `X-Hub-Signature-256` (HMAC SHA-256 com app secret, sobre o **corpo bruto**), grava o evento (`webhook_events`, um por `change`) e responde 200. A Meta recomenda latência mediana **≤ 250 ms**, reentrega por até 7 dias e manda lotes de até 1000 eventos.
+   **Decisão (S2):** a fila de webhooks é a própria tabela `webhook_events` (claim com `FOR UPDATE SKIP LOCKED` + lease), não BullMQ: durável na mesma transação do recebimento e sem Redis no caminho crítico. BullMQ continua previsto para envios (S3).
+3. `webhook-processor` roteia por campo (lista validada em `docs/04-endpoints.md` §2.1) com deduplicação por chave (hash de objeto + entry + campo + valor; em S3, `wamid + status`). Falha → backoff exponencial até 60 min; após 8 tentativas → `dead`.
 4. Job de reconciliação periódica cobre eventos perdidos (consulta estado na API).
 
 ## 5. Capacity Manager — algoritmo
 
-**Fonte do limite:** campo `whatsapp_business_manager_messaging_limit` do portfolio (⚠️ a validar; `messaging_limit_tier` está depreciado), sincronizado a cada 15 min e ao receber webhooks de capacidade/conta.
+**Fonte do limite:** campo `whatsapp_business_manager_messaging_limit` do portfolio (validado; `messaging_limit_tier` está depreciado) e webhook `business_capability_update`, sincronizado a cada 15 min e ao receber webhooks de capacidade/conta.
 
 **Janela de 24h por portfolio (Redis):**
 - `ZSET cap:{portfolio}:window` → membro = `hash(telefone)`, score = timestamp do primeiro envio de template na janela.
@@ -310,7 +311,7 @@ para cada destinatário do lote:
 - Retry com backoff exponencial + jitter (máx. 5 tentativas) para erros transitórios (throughput, 5xx antes de aceite, rede).
 - Esgotadas as tentativas → DLQ (`failed` no BullMQ + registro), com tela de inspeção e reenvio.
 
-### 6.3 Catálogo de erros (⚠️ códigos a validar na documentação oficial)
+### 6.3 Catálogo de erros (validado: `docs/10-meta-referencia.md` §6; implementado em `classifyMetaError`)
 
 | Situação | Ação |
 |---|---|
@@ -323,6 +324,11 @@ para cada destinatário do lote:
 | Template inexistente/pausado (132xxx) | Pausa campanha + sincroniza template |
 | Token inválido/expirado (190) | Marca conexão `broken`, pausa cliente, alerta |
 | Conta bloqueada por política (ex.: 368, 131031) | Pausa cliente + alerta crítico + procedimento de revisão |
+| Opt-out de marketing (131050) | **Suprime o contato**; nunca reenviar |
+| Restrição por país / classificação de template (130497, 131064) | Pausa campanha |
+| Pacing do portfolio (135000, 132015) | Pausa campanha (portão de qualidade) |
+| Rate limit da API / manutenção (4, 80007, 131057) | Transitório: repetir mais devagar |
+| Regra geral | Lógica por `code` + `error_data.details`; `is_transient: true` = pode repetir; `error_subcode` depreciado |
 
 ### 6.4 Opt-out
 - Mensagem recebida com palavra-chave normalizada (`sair`, `parar`, `pare`, `stop`, `cancelar`, `descadastrar`, `não quero`…) ou payload do botão de opt-out → insere em `suppressions` e cancela pendentes do contato no cliente. Meta: < 60 s.

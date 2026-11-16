@@ -113,6 +113,13 @@ describe('meta-sim — Graph API', () => {
   });
 });
 
+describe('meta-sim — operação', () => {
+  it('expõe /healthz sem exigir versão nem token', async () => {
+    const res = await fetch(`${base}/healthz`);
+    expect(res.status).toBe(200);
+  });
+});
+
 describe('meta-sim — webhooks', () => {
   it('emite webhook assinado com o app secret sobre o corpo bruto', async () => {
     const receiver = Fastify();

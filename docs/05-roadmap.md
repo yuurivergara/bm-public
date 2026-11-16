@@ -110,7 +110,7 @@ gantt
 
 ## 7. Progresso
 
-### S1 — Fundação (em andamento)
+### S1 — Fundação ✅
 
 | Item | Status | Observações |
 |---|---|---|
@@ -124,11 +124,27 @@ gantt
 | RBAC (owner/operator/viewer) | ✅ | Matriz em `packages/shared/src/rbac.ts` |
 | Auditoria append-only na mesma transação, sem segredos | ✅ | |
 | CRUD de clientes + configurações (RLS) + transições de status | ✅ | CNPJ alfanumérico suportado (vigente desde jul/2026) |
-| Envelope encryption (chave local em dev) | ✅ | KMS na S2 |
+| Envelope encryption (chave local em dev) | ✅ | Sem KMS no MVP: `MASTER_KEY` (D-16) |
 | Dockerfile da API | ✅ | Validado via `pnpm deploy`; build Docker roda no CI |
-| Infra de staging (VPS BMS + Coolify) | 🟡 | `deploy/provision.sh` (testado em container Ubuntu 24.04, aguardando aprovação para rodar na VPS), `deploy/docker-compose.prod.yml` (smoke test local ok), `.github/workflows/deploy.yml` (GHCR + API da Coolify). Falta: aplicar na VPS, configurar Coolify/GitHub (D-16a, `deploy/README.md`) |
+| Infra de staging (VPS BMS + Coolify) | 🟡 | VPS endurecida com `deploy/provision.sh` (ufw + DOCKER-USER, SSH só chave, usuário `deploy`, atualizações automáticas). Staging no ar em https://bm.179-197-76-7.sslip.io via `deploy/vps-deploy.sh` (ponte manual). Falta o caminho oficial GitHub Actions → GHCR → Coolify (push do branch com escopo `workflow` + configuração Coolify/GitHub, `deploy/README.md`) |
 | Chave mestra sem KMS (D-16) | ✅ | `MASTER_KEY`/`MASTER_KEY_ID` em staging/prod; `LOCAL_MASTER_KEY` continua só dev/test |
 | Backup contínuo do Postgres fora da VPS + restauração testada | ⏳ | Obrigatório antes do piloto (D-16) |
 | Painel web (Next.js) — tela de login | ⏳ | Previsto junto com S2/S6 |
 
-**Testes atuais:** 61 (27 shared, 7 banco/RLS, 27 API — 19 e2e + 8 de configuração).
+### S2 — Ativos + Meta ✅ (com simulador; falta validar com app/número reais da Meta)
+
+| Item | Status | Observações |
+|---|---|---|
+| Referência oficial da Meta validada | ✅ | `docs/10-meta-referencia.md` (Graph API v27.0); `docs/09` atualizado |
+| `packages/meta-client` | ✅ | Bearer + `appsecret_proof`, timeout, POST com timeout = ambíguo, paginação, `debug_token`, `subscribed_apps` |
+| Catálogo de erros | ✅ | `classifyMetaError` (code + `is_transient`, ações de §6.3 do 02) |
+| `apps/meta-sim` | ✅ | Graph API simulada (token, proof, alcance, fields, erros injetáveis) + webhooks assinados; roda no staging (rede interna) |
+| Migration 0002 (ativos, saúde, rotas, `webhook_events` particionada) | ✅ | Aplicada no staging |
+| Webhooks: verificação, assinatura no corpo bruto, ingestão sem rate limit | ✅ | Um evento por `change`; resposta imediata |
+| Processador de webhooks | ✅ | Fila em Postgres (lease + `SKIP LOCKED`), dedupe 7 dias, backoff até 60 min, `dead` após 8 tentativas |
+| Handlers de ativos | ✅ | `account_update`, `account_review_update`, `business_capability_update`, `phone_number_quality_update`, `phone_number_name_update`, `account_alerts` |
+| Cadastro de ativos por parceria/manual | ✅ | `POST /tenants/:id/assets/partner-share`: valida na Meta, inscreve webhooks, cifra token, idempotente, 409 entre clientes |
+| Sync de limites/qualidade | ✅ | `POST /tenants/:id/assets/sync` (manual); token revogado → conexão `broken`. Agendamento a cada 15 min entra com o worker (S3) |
+| Critério de aceite no staging | 🟡 | `deploy/staging-e2e.sh` passa com o **meta-sim**. Falta repetir com app + número de teste reais da Meta (depende do App Dashboard) |
+
+**Testes atuais:** 127 (27 shared, 10 banco/RLS, 26 meta-client, 10 meta-sim, 54 API).

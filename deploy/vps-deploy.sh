@@ -13,18 +13,21 @@ DIR=/opt/bm-platform
 API_HOST="${API_HOST:-bm.179-197-76-7.sslip.io}"
 TAG="$(git rev-parse --short HEAD)$(git diff --quiet HEAD -- . || echo -dirty)"
 IMAGE=ghcr.io/yuurivergara/bm-api
+SIM_IMAGE=ghcr.io/yuurivergara/bm-meta-sim
 
 cd "$(git rev-parse --show-toplevel)"
 
-echo "== build $IMAGE:$TAG"
+echo "== build $IMAGE:$TAG e $SIM_IMAGE:$TAG"
 docker build -q -f apps/api/Dockerfile -t "$IMAGE:$TAG" -t "$IMAGE:staging" .
+docker build -q -f apps/meta-sim/Dockerfile -t "$SIM_IMAGE:$TAG" -t "$SIM_IMAGE:staging" .
 
-echo "== enviando imagem para $HOST"
-docker save "$IMAGE:$TAG" "$IMAGE:staging" | gzip -1 | ssh "$HOST" 'gunzip | docker load -q'
+echo "== enviando imagens para $HOST"
+docker save "$IMAGE:$TAG" "$IMAGE:staging" "$SIM_IMAGE:$TAG" "$SIM_IMAGE:staging" \
+  | gzip -1 | ssh "$HOST" 'gunzip | docker load -q'
 
 echo "== arquivos de compose"
 ssh "$HOST" "install -d -m 750 $DIR"
-scp -q deploy/docker-compose.prod.yml deploy/docker-compose.vps.yml "$HOST:$DIR/"
+scp -q deploy/docker-compose.prod.yml deploy/docker-compose.vps.yml deploy/docker-compose.sim.yml "$HOST:$DIR/"
 
 echo "== segredos (gerados na VPS só se ainda não existirem)"
 ssh "$HOST" "API_HOST='$API_HOST' DIR='$DIR' bash -s" <<'REMOTE'
@@ -37,6 +40,9 @@ add MASTER_KEY "$(openssl rand -base64 32)"
 add PHONE_HASH_PEPPER "$(openssl rand -base64 32)"
 add SERVICE_PASSWORD_POSTGRES "$(openssl rand -hex 24)"
 add SERVICE_PASSWORD_BMAPP "$(openssl rand -hex 24)"
+add META_APP_SECRET "$(openssl rand -hex 32)"
+add META_WEBHOOK_VERIFY_TOKEN "$(openssl rand -hex 24)"
+add SIM_DEMO_TOKEN "EAASIM$(openssl rand -hex 24)"
 add APP_ENV staging
 add PULL_POLICY never
 sed -i "/^API_HOST=/d" "$ENV"; echo "API_HOST=$API_HOST" >> "$ENV"
@@ -45,7 +51,7 @@ echo "variáveis definidas: $(cut -d= -f1 "$ENV" | tr '\n' ' ')"
 REMOTE
 
 echo "== subindo"
-ssh "$HOST" "cd $DIR && docker compose -p bm-platform --env-file .env -f docker-compose.prod.yml -f docker-compose.vps.yml up -d --wait --remove-orphans 2>&1 | tail -5"
+ssh "$HOST" "cd $DIR && docker compose -p bm-platform --env-file .env -f docker-compose.prod.yml -f docker-compose.vps.yml -f docker-compose.sim.yml up -d --wait --remove-orphans 2>&1 | tail -5"
 
 echo "== smoke test"
 for _ in $(seq 1 24); do

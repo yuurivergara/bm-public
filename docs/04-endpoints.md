@@ -114,7 +114,7 @@
 - **GET:** verificação (`hub.mode`, `hub.verify_token`, `hub.challenge`).
 - **POST:** valida `X-Hub-Signature-256`; grava em `webhook_events`; enfileira; responde 200.
 
-Campos assinados (⚠️ nomes a validar na documentação vigente):
+Campos assinados (validados em `docs/10-meta-referencia.md` §3; `entry[].id` = WABA):
 
 | Campo | Uso |
 |---|---|
@@ -122,12 +122,14 @@ Campos assinados (⚠️ nomes a validar na documentação vigente):
 | `message_template_status_update` | Aprovação, rejeição, pausa, desativação |
 | `message_template_quality_update` | Qualidade do template |
 | `template_category_update` | Reclassificação de categoria |
-| `phone_number_quality_update` | Qualidade/limite do número |
+| `phone_number_quality_update` | Hoje sinaliza **throughput** (`ONBOARDING`/`THROUGHPUT_UPGRADE`); legado traz `current_limit`. A qualidade vem do sync |
 | `phone_number_name_update` | Aprovação do nome exibido |
 | `account_update` | Restrições, violações de política, mudanças de conta |
 | `account_review_update` | Revisão da WABA |
-| `business_capability_update` | Mudanças de limite/capacidade |
+| `business_capability_update` | **Limite de mensagens do portfolio** (`max_daily_conversations_per_business`, número ou `TIER_*`) e `max_phone_numbers_per_waba` |
 | `account_alerts` | Alertas da conta |
+| `user_preferences` | **Opt-out oficial** de marketing pelo usuário (S4: alimenta `suppressions`) |
+| `security` | Mudanças de segurança do número (PIN etc.) |
 
 ### 2.2 Provedor de números — `POST /webhooks/number-provider/:providerId`
 Recebe SMS/transcrição com o código de verificação; validação por assinatura/segredo do provedor; casa o código com o número em `verifying`.

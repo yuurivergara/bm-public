@@ -27,6 +27,13 @@ services:
       - PHONE_HASH_PEPPER=${PHONE_HASH_PEPPER:?defina PHONE_HASH_PEPPER (32 bytes base64) na Coolify}
       - SESSION_COOKIE_SECURE=true
       - LOG_LEVEL=${LOG_LEVEL:-info}
+      # Meta (docs/10-meta-referencia.md). Em staging, o override docker-compose.sim.yml
+      # aponta META_GRAPH_BASE_URL para o meta-sim.
+      - META_GRAPH_BASE_URL=${META_GRAPH_BASE_URL:-https://graph.facebook.com}
+      - META_GRAPH_VERSION=${META_GRAPH_VERSION:-v27.0}
+      - META_APP_ID=${META_APP_ID:-}
+      - META_APP_SECRET=${META_APP_SECRET:?defina META_APP_SECRET (App Dashboard → Configurações → Básico)}
+      - META_WEBHOOK_VERIFY_TOKEN=${META_WEBHOOK_VERIFY_TOKEN:?defina META_WEBHOOK_VERIFY_TOKEN (16+ caracteres)}
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/readyz"]
       interval: 15s

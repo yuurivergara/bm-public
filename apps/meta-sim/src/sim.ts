@@ -189,7 +189,7 @@ export function createMetaSim(opts: MetaSimOptions) {
 
   app.addHook('preHandler', async (req, reply) => {
     const path = req.url.split('?')[0] ?? '';
-    if (path.startsWith('/_sim')) return;
+    if (path.startsWith('/_sim') || path === '/healthz') return;
     if (!path.startsWith(`/${v}/`)) {
       return graphError(reply, 400, { message: `Unknown API version (sim: ${v})`, code: 2635 });
     }
@@ -279,6 +279,8 @@ export function createMetaSim(opts: MetaSimOptions) {
       error_subcode: 33,
     });
   }
+
+  app.get('/healthz', async () => ({ status: 'ok' }));
 
   // ---------------------------------------------------------------- controle (/_sim)
   app.post('/_sim/reset', async () => {

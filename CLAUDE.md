@@ -58,13 +58,18 @@ Definição de pronto: lint, typecheck e testes verdes; CI (`.github/workflows/c
 
 - ✅ S1 Fundação: monorepo, CI, banco com RLS, auth senha+TOTP, sessões, RBAC, auditoria,
   CRUD de clientes, Dockerfile. Chave mestra MASTER_KEY (D-16). 61 testes.
-- ⏳ Próximo: **S2** — `packages/meta-client` (cliente Graph API tipado + catálogo de erros),
-  **meta-sim** (simulador da Meta para dev/CI), ingestão de webhooks (verificação + assinatura
-  `X-Hub-Signature-256` + fila), cadastro de ativos por parceria/manual, sync de limites/qualidade.
-- 🟡 Infra (D-16/D-16a): staging na VPS BMS com Coolify. `deploy/provision.sh`, `deploy/docker-compose.prod.yml`
-  e `.github/workflows/deploy.yml` prontos (runbook em `deploy/README.md`); falta aplicar na VPS e configurar
-  Coolify/GitHub. Pendente antes do piloto: backup contínuo do Postgres fora da VPS + restauração testada,
-  e decidir a VPS de produção (a BMS divide o host com Vendra/Evolution e copy-whats/Baileys).
+- ✅ S2 Ativos + Meta: `packages/meta-client` (Graph API v27.0, catálogo de erros), `apps/meta-sim`,
+  webhooks (verificação, assinatura, fila em `webhook_events`, processador + handlers de ativos),
+  cadastro de ativos por parceria/manual e sync. Referência oficial validada em `docs/10-meta-referencia.md`
+  (consulte-a antes de usar qualquer campo/endpoint). 127 testes. Falta validar com app/número reais da Meta.
+- ⏳ Próximo: **S3** — envio (worker BullMQ, capacidade por portfolio, rate limit por número, status via
+  webhook `messages`, agendamento do sync a cada 15 min).
+- 🟡 Infra (D-16/D-16a): staging no ar em https://bm.179-197-76-7.sslip.io (VPS BMS, `/opt/bm-platform`,
+  projeto compose `bm-platform`, com meta-sim). Deploy hoje por `deploy/vps-deploy.sh` (build local → VPS);
+  teste ponta a ponta: `deploy/staging-e2e.sh`. Falta: push com escopo `workflow` e configurar Coolify/GitHub
+  para o caminho oficial (`.github/workflows/deploy.yml`). Pendente antes do piloto: backup contínuo do Postgres
+  fora da VPS + restauração testada, e decidir a VPS de produção (a BMS divide o host com Vendra/Evolution e
+  copy-whats/Baileys).
 
 ## Infra / VPS (D-16)
 

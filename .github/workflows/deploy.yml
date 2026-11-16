@@ -59,6 +59,19 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # Simulador da Meta usado no staging (docker-compose.sim.yml); nunca exposto publicamente.
+      - name: Build e push da imagem do meta-sim
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/meta-sim/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/bm-meta-sim:${{ env.SHA }}
+            ghcr.io/${{ github.repository_owner }}/bm-meta-sim:staging
+          cache-from: type=gha,scope=meta-sim
+          cache-to: type=gha,mode=max,scope=meta-sim
+
       - name: Disparar deploy na Coolify
         id: trigger
         env:

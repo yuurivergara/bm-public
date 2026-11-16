@@ -19,7 +19,11 @@ push no master → CI verde → deploy.yml: build da imagem → GHCR (:sha e :st
 | -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
 | `deploy/provision.sh`            | Endurecimento idempotente (usuário sem root, SSH só por chave, atualizações automáticas, ufw + DOCKER-USER, swap). Dry-run por padrão. |
 | `deploy/docker-compose.prod.yml` | Pilha lida pela Coolify: `bm-postgres` → `migrate` → `api`. Nenhuma porta publicada.                                                   |
-| `.github/workflows/deploy.yml`   | Build/push no GHCR e deploy via API da Coolify, com espera do resultado e smoke test.                                                  |
+| `deploy/docker-compose.vps.yml`  | Override da ponte manual: rede `coolify` + labels do Traefik (domínio `API_HOST`).                                                     |
+| `deploy/docker-compose.sim.yml`  | Override de staging: sobe o **meta-sim** (sem porta publicada) e aponta `META_GRAPH_BASE_URL` para ele.                                |
+| `deploy/vps-deploy.sh`           | Deploy pela ponte: build local → `docker load` na VPS → compose up → smoke test.                                                       |
+| `deploy/staging-e2e.sh`          | Teste ponta a ponta no staging: login+TOTP → webhook (verificação/assinatura) → cadastro de ativos → webhook do sim → sync.            |
+| `.github/workflows/deploy.yml`   | Build/push no GHCR (API + meta-sim) e deploy via API da Coolify, com espera do resultado e smoke test.                                 |
 
 ## Estado atual (2026-11-16)
 
@@ -28,6 +32,10 @@ push no master → CI verde → deploy.yml: build da imagem → GHCR (:sha e :st
   o rollback foi cancelado.
 - ✅ Staging no ar em **https://bm.179-197-76-7.sslip.io**, pela ponte `deploy/vps-deploy.sh`
   (pilha em `/opt/bm-platform`, roteada pelo Traefik da Coolify, mesmo padrão de `/opt/vendra`).
+- ✅ S2 no staging: migration 0002 aplicada, meta-sim rodando na rede interna, `deploy/staging-e2e.sh`
+  passando de ponta a ponta (webhook assinado entregue pela URL pública e processado).
+- ✅ Conta operacional de teste `owner@staging.local` (usada pelo e2e). Senha e segredo TOTP só na VPS,
+  em `/opt/bm-platform/.owner` (600). Crie a sua conta de operador separadamente (abaixo).
 - ⏳ Fluxo GitHub Actions → GHCR → Coolify: depende do push do repositório (com escopo `workflow`) e
   dos passos 2 e 3 abaixo. Ao migrar para a Coolify, pare a ponte com
   `docker compose -p bm-platform down` (o volume `bm-platform_bm-pgdata` continua lá).
@@ -40,6 +48,15 @@ deploy/vps-deploy.sh     # build local → docker save | ssh docker load → com
 
 Os segredos são gerados **na VPS** na primeira execução, em `/opt/bm-platform/.env` (permissão 600).
 Copie `MASTER_KEY` e `PHONE_HASH_PEPPER` para o cofre: `ssh bms-vps cat /opt/bm-platform/.env`.
+`META_APP_SECRET` e `META_WEBHOOK_VERIFY_TOKEN` gerados ali são **do simulador**. Para ligar o app real da
+Meta, troque os dois pelo app secret do App Dashboard e pelo verify token que você cadastrar no painel de
+webhooks, defina `META_APP_ID` e suba **sem** `-f docker-compose.sim.yml` (ou mantenha o sim só para testes).
+
+Teste ponta a ponta (repetível):
+
+```bash
+deploy/staging-e2e.sh
+```
 Primeiro operador:
 
 ```bash
@@ -90,6 +107,9 @@ fica na chain `DOCKER-USER`.
 
    **Guarde as duas no cofre de senhas.** Sem a `MASTER_KEY` não dá para decifrar os tokens Meta
    e os segredos TOTP. Sem o `PHONE_HASH_PEPPER`, a deduplicação e a supressão param de bater.
+   Meta (obrigatórias): `META_APP_SECRET` (App Dashboard → Configurações → Básico) e
+   `META_WEBHOOK_VERIFY_TOKEN` (`openssl rand -hex 24`, o mesmo cadastrado no painel de webhooks);
+   opcional `META_APP_ID`. Callback dos webhooks: `https://bm.179-197-76-7.sslip.io/webhooks/meta`.
    Opcional: `APP_ENV` (padrão `staging`), `LOG_LEVEL`, `IMAGE_TAG` (padrão `staging`).
 6. **Desligue o auto-deploy por webhook do Git** na Coolify. O deploy vem do GitHub Actions, depois do CI.
 7. **Token de API:** Keys & Tokens → token com permissão `deploy` (e `read`).

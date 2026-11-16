@@ -87,3 +87,11 @@ describe('loadConfig — Meta', () => {
     ).toThrow(/META_GRAPH_VERSION/);
   });
 });
+
+describe('loadConfig — variáveis vazias', () => {
+  it('trata string vazia como ausente (compose com VAR="")', () => {
+    const cfg = loadConfig({ ...base(), LOCAL_MASTER_KEY: key(), META_APP_ID: '', KMS_KEY_ID: '' });
+    expect(cfg.META_APP_ID).toBeUndefined();
+    expect(cfg.KMS_KEY_ID).toBeUndefined();
+  });
+});
