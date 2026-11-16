@@ -24,7 +24,7 @@ Plataforma **interna** para um operador conectar, administrar e disparar campanh
 Pré-requisitos: Node 22+, pnpm 10 (`corepack enable`), Docker (ou PostgreSQL 16 e Redis 7 locais).
 
 ```bash
-docker compose up -d                 # Postgres, Redis, MinIO
+docker compose up -d                 # Postgres e Redis
 cp .env.example .env                 # preencha LOCAL_MASTER_KEY e PHONE_HASH_PEPPER:
                                      #   openssl rand -base64 32
 pnpm install
