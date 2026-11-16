@@ -34,6 +34,10 @@ services:
       - META_APP_ID=${META_APP_ID:-}
       - META_APP_SECRET=${META_APP_SECRET:?defina META_APP_SECRET (App Dashboard → Configurações → Básico)}
       - META_WEBHOOK_VERIFY_TOKEN=${META_WEBHOOK_VERIFY_TOKEN:?defina META_WEBHOOK_VERIFY_TOKEN (16+ caracteres)}
+      # Arquivos de contatos enquanto são analisados (apagados depois); volume sobrevive a restart.
+      - IMPORT_DIR=/data/imports
+    volumes:
+      - bm-imports:/data/imports
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/readyz"]
       interval: 15s
@@ -140,5 +144,6 @@ services:
 
 volumes:
   bm-pgdata:
+  bm-imports:
   # Destino local (WALG_FILE_PREFIX=/backups): só enquanto não houver destino fora da VPS.
   bm-backups:

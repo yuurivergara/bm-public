@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import fastifyCookie from '@fastify/cookie';
 import helmet from '@fastify/helmet';
+import multipart from '@fastify/multipart';
 import rateLimit from '@fastify/rate-limit';
 import { type DynamicModule, type LogLevel, Module, RequestMethod } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD, NestFactory } from '@nestjs/core';
@@ -13,6 +14,10 @@ import { AuthService } from './auth/auth.service';
 import { SessionService } from './auth/session.service';
 import { ErrorFilter } from './common/http';
 import type { AppConfig } from './config/config';
+import { ContactsController } from './contacts/contacts.controller';
+import { ContactsService } from './contacts/contacts.service';
+import { ImportProcessor } from './contacts/import-processor.service';
+import { ImportsService } from './contacts/imports.service';
 import { CoreModule } from './core/core.module';
 import { HealthController } from './health/health.controller';
 import { NumbersController } from './numbers/numbers.controller';
@@ -59,6 +64,7 @@ class AppModule {
         AssetsController,
         NumbersController,
         TemplatesController,
+        ContactsController,
         MetaWebhooksController,
       ],
       providers: [
@@ -70,6 +76,9 @@ class AppModule {
         AssetsService,
         NumbersService,
         TemplatesService,
+        ImportsService,
+        ImportProcessor,
+        ContactsService,
         ...ASSET_WEBHOOK_HANDLERS,
         ...TEMPLATE_WEBHOOK_HANDLERS,
         {
@@ -120,6 +129,16 @@ export async function createApp(
   });
   await app.register(helmet);
   await app.register(fastifyCookie);
+  // Upload de contatos (FR-CON-01): um arquivo, gravado em disco em streaming.
+  await app.register(multipart, {
+    limits: {
+      fileSize: config.IMPORT_MAX_BYTES,
+      files: 1,
+      fields: 20,
+      fieldSize: 10_000,
+      parts: 25,
+    },
+  });
   await app.register(rateLimit, {
     max: 300,
     timeWindow: '1 minute',

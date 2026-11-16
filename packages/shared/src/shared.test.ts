@@ -10,6 +10,7 @@ import {
   LocalKeyProvider,
   maskPhone,
   normalizePhone,
+  phoneHasher,
 } from './index';
 
 describe('normalizePhone', () => {
@@ -100,6 +101,11 @@ describe('hashPhone', () => {
     const b = hashPhone('+5511987654321', pepper, 'tenant-b');
     expect(a1.equals(a2)).toBe(true);
     expect(a1.equals(b)).toBe(false);
+  });
+  it('phoneHasher (chave derivada uma vez) dá o mesmo hash', () => {
+    const h = phoneHasher(pepper, 'tenant-a');
+    expect(h('+5511987654321').equals(hashPhone('+5511987654321', pepper, 'tenant-a'))).toBe(true);
+    expect(h('+5511987654321').equals(h('+5511987654322'))).toBe(false);
   });
 });
 

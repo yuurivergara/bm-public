@@ -10,7 +10,8 @@ RUN pnpm install --frozen-lockfile \
 FROM node:22-alpine AS runtime
 ENV NODE_ENV=production
 WORKDIR /app
-RUN addgroup -S app && adduser -S app -G app
+RUN addgroup -S app && adduser -S app -G app \
+ && install -d -o app -g app -m 700 /data/imports
 COPY --from=build --chown=app:app /out ./
 # Arquivos de compose da mesma versão: o deploy na VPS (deploy/bm-deploy.sh) os extrai da imagem.
 COPY deploy/docker-compose.prod.yml deploy/docker-compose.vps.yml deploy/docker-compose.sim.yml /app/deploy/
