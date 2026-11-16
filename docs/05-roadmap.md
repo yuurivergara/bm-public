@@ -107,3 +107,26 @@ gantt
 - Ações administrativas auditadas.
 - Documentação (`docs/`) e README atualizados.
 - Nenhum segredo, token ou telefone completo em logs.
+
+## 7. Progresso
+
+### S1 — Fundação (em andamento)
+
+| Item | Status | Observações |
+|---|---|---|
+| Monorepo pnpm + Turborepo + Biome | ✅ | |
+| CI (lint, build, typecheck, testes com Postgres, build da imagem) | ✅ | `.github/workflows/ci.yml` |
+| docker-compose (Postgres, Redis, MinIO) | ✅ | |
+| Migrador SQL + migration 0001 (operadores, sessões, clientes, configurações, auditoria particionada) | ✅ | Papel `bm_app` sem BYPASSRLS |
+| RLS com teste automático (toda tabela com `tenant_id` precisa de política) | ✅ | `packages/db/src/db.test.ts` |
+| Login senha (argon2id) + TOTP obrigatório, anti-replay, bloqueio após 5 falhas, rate limit | ✅ | |
+| Sessões (cookie HttpOnly/SameSite=Strict, expiração por inatividade e absoluta, revogação) | ✅ | |
+| RBAC (owner/operator/viewer) | ✅ | Matriz em `packages/shared/src/rbac.ts` |
+| Auditoria append-only na mesma transação, sem segredos | ✅ | |
+| CRUD de clientes + configurações (RLS) + transições de status | ✅ | CNPJ alfanumérico suportado (vigente desde jul/2026) |
+| Envelope encryption (chave local em dev) | ✅ | KMS na S2 |
+| Dockerfile da API | ✅ | Validado via `pnpm deploy`; build Docker roda no CI |
+| Terraform base de staging | ⏳ | Próximo item |
+| Painel web (Next.js) — tela de login | ⏳ | Previsto junto com S2/S6 |
+
+**Testes atuais:** 53 (27 shared, 7 banco/RLS, 19 API e2e).
