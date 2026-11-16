@@ -1,0 +1,21 @@
+#!/bin/bash
+# Incluído (source) pelos scripts de backup. O compose repassa todas as variáveis de destino,
+# inclusive vazias; o WAL-G pode tratar vazia como definida, então removemos as vazias aqui.
+for v in WALG_FILE_PREFIX WALG_S3_PREFIX WALG_SSH_PREFIX AWS_ENDPOINT AWS_REGION \
+  AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_S3_FORCE_PATH_STYLE SSH_PORT SSH_USERNAME \
+  SSH_PRIVATE_KEY_PATH; do
+  [[ -z "${!v:-}" ]] && unset "$v"
+done
+export WALG_LIBSODIUM_KEY_TRANSFORM="${WALG_LIBSODIUM_KEY_TRANSFORM:-base64}"
+export WALG_COMPRESSION_METHOD="${WALG_COMPRESSION_METHOD:-zstd}"
+
+# Descreve o destino sem segredos (para logs).
+walg_target() {
+  if [[ -n "${WALG_S3_PREFIX:-}" ]]; then
+    echo "s3 ${WALG_S3_PREFIX} (${AWS_ENDPOINT:-aws})"
+  elif [[ -n "${WALG_SSH_PREFIX:-}" ]]; then
+    echo "ssh ${WALG_SSH_PREFIX}"
+  elif [[ -n "${WALG_FILE_PREFIX:-}" ]]; then
+    echo "local ${WALG_FILE_PREFIX} (NA MESMA VPS: não protege contra perda do servidor)"
+  fi
+}

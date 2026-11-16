@@ -1,0 +1,150 @@
+#!/bin/bash
+# Backup do Postgres da plataforma com WAL-G (roda no serviço "bm-backup" do compose, como postgres).
+#
+#   bm-backup base     base completa agora + retenção (BACKUP_RETAIN_FULL bases, padrão 7)
+#   bm-backup verify   teste de restauração: baixa a última base + WAL num diretório temporário,
+#                      sobe um Postgres isolado (sem rede, sem arquivamento), confere e apaga
+#   bm-backup archiver confere se o arquivamento de WAL está em dia (pg_stat_archiver)
+#   bm-backup list     lista as bases no destino
+#   bm-backup loop     agenda: base diária às BACKUP_TIME, verify semanal (BACKUP_VERIFY_WEEKDAY,
+#                      1=seg … 7=dom) e checagem do arquivamento a cada 5 min
+#
+# Destino e chave vêm do ambiente (ver deploy/README.md, "Backup"). BACKUP_PING_URL (opcional, estilo
+# healthchecks.io): sucesso faz GET na URL; falha faz GET em URL/fail.
+set -uo pipefail
+source /usr/local/bin/bm-walg-env
+
+log() { echo "$(date -Iseconds) backup: $*"; }
+ping_monitor() { # ping_monitor ok|fail
+  [[ -n "${BACKUP_PING_URL:-}" ]] || return 0
+  local url="$BACKUP_PING_URL"
+  [[ "$1" == fail ]] && url="$url/fail"
+  curl -fsS -m 10 --retry 3 -o /dev/null "$url" || log "aviso: ping do monitor falhou"
+}
+live_psql() { psql -X -qAt -v ON_ERROR_STOP=1 "$@"; } # PGHOST/PGUSER/PGPASSWORD/PGDATABASE do ambiente
+
+require_target() {
+  if [[ -z "$(walg_target)" ]]; then
+    log "sem destino configurado (WALG_FILE_PREFIX/WALG_S3_PREFIX/WALG_SSH_PREFIX): backup desligado"
+    return 1
+  fi
+  if [[ -z "${WALG_LIBSODIUM_KEY:-}" ]]; then
+    log "FALHOU: WALG_LIBSODIUM_KEY ausente; nada é enviado sem criptografia"
+    return 1
+  fi
+}
+
+cmd_base() {
+  require_target || return 1
+  log "base: iniciando → $(walg_target)"
+  if ! wal-g backup-push "$PGDATA" 2>&1 | tail -3; then
+    log "base: FALHOU"
+    return 1
+  fi
+  # pipefail: o status acima é do wal-g
+  wal-g delete retain FULL "${BACKUP_RETAIN_FULL:-7}" --confirm 2>&1 | tail -1
+  log "base: ok"
+}
+
+cmd_archiver() {
+  require_target || return 1
+  local row
+  row="$(live_psql -c "select archived_count, failed_count,
+      coalesce(extract(epoch from now() - last_archived_time)::int, -1),
+      (last_failed_time is not null and (last_archived_time is null or last_failed_time > last_archived_time))
+    from pg_stat_archiver")" || { log "archiver: banco inacessível"; return 1; }
+  IFS='|' read -r archived failed age failing <<<"$row"
+  if [[ "$failing" == t ]]; then
+    log "archiver: FALHANDO (arquivados=$archived falhas=$failed; último ok há ${age}s)"
+    return 1
+  fi
+  # archive_timeout=300: com o banco ativo, um segmento sai a cada 5 min no máximo.
+  if ((age > ${BACKUP_ARCHIVE_MAX_AGE:-3600})); then
+    log "archiver: aviso: último WAL arquivado há ${age}s"
+  fi
+}
+
+cmd_verify() {
+  require_target || return 1
+  local dir rc
+  dir="$(mktemp -d /tmp/bm-restore.XXXXXX)"
+  chmod 700 "$dir"
+  _verify "$dir"
+  rc=$?
+  pg_ctl -D "$dir" -m immediate stop >/dev/null 2>&1 || true
+  rm -rf "$dir"
+  return "$rc"
+}
+
+_verify() {
+  local dir="$1" port=5499
+  local t0=$SECONDS
+  log "verify: baixando a última base de $(walg_target)"
+  wal-g backup-fetch "$dir" LATEST 2>&1 | tail -2 || { log "verify: FALHOU no backup-fetch"; return 1; }
+  # Recuperação até o fim do WAL disponível; depois promove. Nunca arquiva (não polui o destino).
+  touch "$dir/recovery.signal"
+  cat >>"$dir/postgresql.auto.conf" <<EOF
+restore_command = 'wal-g wal-fetch "%f" "%p"'
+archive_mode = off
+EOF
+  if ! pg_ctl -D "$dir" -w -t 900 -l "$dir/restore.log" \
+    -o "-c port=$port -c listen_addresses='' -c unix_socket_directories=$dir -c shared_buffers=32MB" \
+    start >/dev/null; then
+    log "verify: FALHOU ao subir o Postgres restaurado"; tail -12 "$dir/restore.log"; return 1
+  fi
+  local q=(psql -X -qAt -h "$dir" -p "$port" -U "${PGUSER:-bm_owner}" -d "${PGDATABASE:-bm}" -v ON_ERROR_STOP=1)
+  for _ in $(seq 1 600); do
+    [[ "$("${q[@]}" -c 'select pg_is_in_recovery()' 2>/dev/null)" == f ]] && break
+    sleep 1
+  done
+  if [[ "$("${q[@]}" -c 'select pg_is_in_recovery()' 2>/dev/null)" != f ]]; then
+    log "verify: FALHOU: recuperação não terminou"; tail -12 "$dir/restore.log"; return 1
+  fi
+  local r_mig r_ten r_last l_mig l_ten
+  r_mig="$("${q[@]}" -c 'select count(*) from schema_migrations')" || { log "verify: FALHOU: consulta no restaurado"; return 1; }
+  r_ten="$("${q[@]}" -c 'select count(*) from tenants')"
+  r_last="$("${q[@]}" -c "select coalesce(to_char(max(created_at) at time zone 'America/Sao_Paulo', 'YYYY-MM-DD HH24:MI:SS'), '-') from audit_logs")"
+  l_mig="$(live_psql -c 'select count(*) from schema_migrations')" || l_mig='?'
+  l_ten="$(live_psql -c 'select count(*) from tenants')" || l_ten='?'
+  log "verify: restaurado em $((SECONDS - t0))s — migrations $r_mig/$l_mig, clientes $r_ten/$l_ten, última auditoria restaurada $r_last"
+  if [[ "$r_mig" != "$l_mig" ]] || { [[ "$l_ten" =~ ^[0-9]+$ ]] && ((l_ten > 0 && r_ten == 0)); }; then
+    log "verify: FALHOU: dados restaurados não batem com o banco em produção"
+    return 1
+  fi
+  log "verify: ok"
+}
+
+cmd_loop() {
+  log "agendador: base diária às ${BACKUP_TIME:=03:15}, verify no dia ${BACKUP_VERIFY_WEEKDAY:=7} da semana; destino: $(walg_target || true)"
+  if ! require_target; then
+    exec sleep infinity
+  fi
+  # Primeira execução: sem base no destino → faz uma agora e testa a restauração.
+  if ! wal-g backup-list 2>/dev/null | grep -q base_; then
+    if cmd_base && cmd_verify; then ping_monitor ok; else ping_monitor fail; fi
+  fi
+  local last_run="" tick=0
+  while true; do
+    if [[ "$(date +%H:%M)" == "$BACKUP_TIME" && "$last_run" != "$(date +%F)" ]]; then
+      last_run="$(date +%F)"
+      ok=1
+      cmd_base || ok=0
+      if ((ok)) && [[ "$(date +%u)" == "$BACKUP_VERIFY_WEEKDAY" ]]; then cmd_verify || ok=0; fi
+      cmd_archiver || ok=0
+      if ((ok)); then ping_monitor ok; else ping_monitor fail; fi
+    elif ((tick % 5 == 0)); then
+      cmd_archiver >/dev/null || { cmd_archiver; ping_monitor fail; }
+    fi
+    tick=$((tick + 1))
+    sleep 60
+  done
+}
+
+case "${1:-}" in
+  base) cmd_base ;;
+  verify) cmd_verify ;;
+  archiver) cmd_archiver && log "archiver: ok" ;;
+  list) require_target && wal-g backup-list --detail ;;
+  loop) cmd_loop ;;
+  *) echo "uso: bm-backup base|verify|archiver|list|loop" >&2; exit 2 ;;
+esac

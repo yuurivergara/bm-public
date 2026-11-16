@@ -59,16 +59,38 @@ services:
       - DATABASE_APP_PASSWORD=${SERVICE_PASSWORD_BMAPP}
 
   # Nome único de propósito: na rede "coolify", "postgres" é alias do banco interno da Coolify.
+  # Imagem = postgres:16.14-bookworm + WAL-G (deploy/postgres). Tag pelo conteúdo: só recria quando muda.
   bm-postgres:
-    # Mesma imagem já presente na VPS BMS (evita download extra).
-    image: postgres:16.14-bookworm
+    image: ghcr.io/yuurivergara/bm-postgres:${PG_IMAGE_TAG:?defina PG_IMAGE_TAG (deploy/postgres/tag.sh)}
+    pull_policy: ${PULL_POLICY:-always}
     restart: unless-stopped
+    # Backup contínuo: cada segmento de WAL vai cifrado para o destino; archive_timeout fecha um
+    # segmento a cada 5 min no máximo (RPO ≤ 5 min, docs/02-arquitetura.md).
+    command:
+      - postgres
+      - -c
+      - wal_level=replica
+      - -c
+      - archive_mode=on
+      - -c
+      - archive_command=bm-wal-archive %p
+      - -c
+      - archive_timeout=300
     environment:
       - POSTGRES_USER=bm_owner
       - POSTGRES_PASSWORD=${SERVICE_PASSWORD_POSTGRES}
       - POSTGRES_DB=bm
+      - &walg_key WALG_LIBSODIUM_KEY=${WALG_LIBSODIUM_KEY:?defina WALG_LIBSODIUM_KEY (openssl rand -base64 32) e guarde no cofre}
+      - &walg_file WALG_FILE_PREFIX=${WALG_FILE_PREFIX:-}
+      - &walg_s3 WALG_S3_PREFIX=${WALG_S3_PREFIX:-}
+      - &aws_endpoint AWS_ENDPOINT=${AWS_ENDPOINT:-}
+      - &aws_region AWS_REGION=${AWS_REGION:-}
+      - &aws_key AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+      - &aws_secret AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+      - &aws_path AWS_S3_FORCE_PATH_STYLE=${AWS_S3_FORCE_PATH_STYLE:-}
     volumes:
       - bm-pgdata:/var/lib/postgresql/data
+      - bm-backups:/backups
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U bm_owner -d bm"]
       interval: 5s
@@ -79,5 +101,44 @@ services:
         limits:
           memory: 1g
 
+  # Base diária, retenção, checagem do arquivamento e teste de restauração semanal (deploy/postgres/bm-backup).
+  bm-backup:
+    image: ghcr.io/yuurivergara/bm-postgres:${PG_IMAGE_TAG}
+    pull_policy: ${PULL_POLICY:-always}
+    restart: unless-stopped
+    user: postgres
+    command: ["bm-backup", "loop"]
+    depends_on:
+      bm-postgres:
+        condition: service_healthy
+    environment:
+      - TZ=America/Sao_Paulo
+      - PGHOST=bm-postgres
+      - PGUSER=bm_owner
+      - PGPASSWORD=${SERVICE_PASSWORD_POSTGRES}
+      - PGDATABASE=bm
+      - BACKUP_TIME=${BACKUP_TIME:-03:15}
+      - BACKUP_VERIFY_WEEKDAY=${BACKUP_VERIFY_WEEKDAY:-7}
+      - BACKUP_RETAIN_FULL=${BACKUP_RETAIN_FULL:-7}
+      - BACKUP_PING_URL=${BACKUP_PING_URL:-}
+      - *walg_key
+      - *walg_file
+      - *walg_s3
+      - *aws_endpoint
+      - *aws_region
+      - *aws_key
+      - *aws_secret
+      - *aws_path
+    volumes:
+      # a base é lida direto dos arquivos (modo 1 do WAL-G); somente leitura
+      - bm-pgdata:/var/lib/postgresql/data:ro
+      - bm-backups:/backups
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+
 volumes:
   bm-pgdata:
+  # Destino local (WALG_FILE_PREFIX=/backups): só enquanto não houver destino fora da VPS.
+  bm-backups:

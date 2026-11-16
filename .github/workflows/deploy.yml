@@ -1,6 +1,6 @@
 name: Deploy (staging)
 
-# Depois que o CI passa no master: constrói as imagens (API e meta-sim), publica no GHCR e
+# Depois que o CI passa no master: constrói as imagens (API, meta-sim e Postgres), publica no GHCR e
 # implanta na VPS por SSH. A chave do Actions só pode executar `deploy <sha>` (comando forçado
 # no authorized_keys do usuário `deploy` → /usr/local/sbin/bm-deploy, ver deploy/bm-deploy.sh).
 # Também pode ser disparado manualmente (Actions → Deploy → Run workflow).
@@ -62,6 +62,21 @@ jobs:
           cache-from: type=gha,scope=api
           cache-to: type=gha,mode=max,scope=api
           # liga o pacote ao repositório: o GITHUB_TOKEN do job consegue baixá-lo na VPS
+          labels: org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+
+      # Postgres + WAL-G (deploy/postgres). Tag = hash do conteúdo: o banco só é recriado quando muda.
+      - name: Tag da imagem do Postgres
+        run: echo "PG_TAG=$(sh deploy/postgres/tag.sh)" >> "$GITHUB_ENV"
+
+      - name: Build e push do Postgres
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/postgres/Dockerfile
+          push: true
+          tags: ghcr.io/yuurivergara/bm-postgres:${{ env.PG_TAG }}
+          cache-from: type=gha,scope=postgres
+          cache-to: type=gha,mode=max,scope=postgres
           labels: org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
 
       # Simulador da Meta usado no staging (docker-compose.sim.yml); nunca exposto publicamente.

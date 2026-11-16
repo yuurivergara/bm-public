@@ -71,6 +71,17 @@ cid="$(docker create "$API_IMAGE")"
 docker cp "$cid:/app/deploy/." "$DIR/" >/dev/null
 docker rm -f "$cid" >/dev/null
 chmod 640 "$DIR"/docker-compose.*.yml
+
+# Postgres + WAL-G: tag pelo conteúdo de deploy/postgres (o banco só reinicia quando ela muda).
+PG_TAG="$(sh "$DIR/postgres/tag.sh" "$DIR/postgres")"
+set_env PG_IMAGE_TAG "$PG_TAG"
+if [[ "$PULL" == always ]]; then
+  docker pull -q "$REGISTRY/yuurivergara/bm-postgres:$PG_TAG" >/dev/null
+fi
+# Chave do backup: gerada aqui uma única vez, nunca exibida (copie para o cofre: deploy/README.md).
+if ! grep -q '^WALG_LIBSODIUM_KEY=' .env; then
+  (umask 077 && printf 'WALG_LIBSODIUM_KEY=%s\n' "$(openssl rand -base64 32)" >>.env)
+fi
 "${COMPOSE[@]}" up -d --wait --remove-orphans 2>&1 | tail -5
 
 API_HOST="$(grep -m1 '^API_HOST=' .env | cut -d= -f2-)"

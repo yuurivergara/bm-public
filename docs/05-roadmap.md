@@ -128,7 +128,7 @@ gantt
 | Dockerfile da API | ✅ | Validado via `pnpm deploy`; build Docker roda no CI |
 | Infra de staging (VPS BMS) | ✅ | VPS endurecida (`deploy/provision.sh`). Staging em https://bm.179-197-76-7.sslip.io. Deploy oficial (D-16b): GitHub Actions → GHCR → SSH com comando forçado (`deploy/bm-deploy.sh`) (ativo desde o merge do PR #1); ponte manual `deploy/vps-deploy.sh` |
 | Chave mestra sem KMS (D-16) | ✅ | `MASTER_KEY`/`MASTER_KEY_ID` em staging/prod; `LOCAL_MASTER_KEY` continua só dev/test |
-| Backup contínuo do Postgres fora da VPS + restauração testada | ⏳ | Obrigatório antes do piloto (D-16) |
+| Backup contínuo do Postgres fora da VPS + restauração testada | 🟡 | WAL-G: WAL cifrado a cada ≤ 5 min, base diária, restauração testada toda semana no staging e a cada push no CI (`deploy/postgres/test-backup.sh`). Falta o destino **fora** da VPS (R2/B2; hoje volume local) e o `BACKUP_PING_URL` |
 | Painel web (Next.js) — tela de login | ⏳ | Previsto junto com S2/S6 |
 
 ### S2 — Ativos + Meta ✅ (com simulador; falta validar com app/número reais da Meta)

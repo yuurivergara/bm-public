@@ -20,9 +20,12 @@ cd "$(git rev-parse --show-toplevel)"
 echo "== build $IMAGE:$TAG e $SIM_IMAGE:$TAG"
 docker build -q -f apps/api/Dockerfile -t "$IMAGE:$TAG" -t "$IMAGE:staging" .
 docker build -q -f apps/meta-sim/Dockerfile -t "$SIM_IMAGE:$TAG" -t "$SIM_IMAGE:staging" .
+PG_IMAGE=ghcr.io/yuurivergara/bm-postgres
+PG_TAG="$(sh deploy/postgres/tag.sh)"
+docker build -q -f deploy/postgres/Dockerfile -t "$PG_IMAGE:$PG_TAG" .
 
 echo "== enviando imagens para $HOST"
-docker save "$IMAGE:$TAG" "$IMAGE:staging" "$SIM_IMAGE:$TAG" "$SIM_IMAGE:staging" \
+docker save "$IMAGE:$TAG" "$IMAGE:staging" "$SIM_IMAGE:$TAG" "$SIM_IMAGE:staging" "$PG_IMAGE:$PG_TAG" \
   | gzip -1 | ssh "$HOST" 'gunzip | docker load -q'
 
 echo "== script de deploy da VPS (/usr/local/sbin/bm-deploy)"
@@ -44,6 +47,9 @@ add SERVICE_PASSWORD_BMAPP "$(openssl rand -hex 24)"
 add META_APP_SECRET "$(openssl rand -hex 32)"
 add META_WEBHOOK_VERIFY_TOKEN "$(openssl rand -hex 24)"
 add SIM_DEMO_TOKEN "EAASIM$(openssl rand -hex 24)"
+add WALG_LIBSODIUM_KEY "$(openssl rand -base64 32)"
+# Destino local até haver um fora da VPS (deploy/README.md, "Backup").
+grep -qE "^(WALG_S3_PREFIX|WALG_SSH_PREFIX)=." "$ENV" || add WALG_FILE_PREFIX /backups
 add APP_ENV staging
 add PULL_POLICY never
 sed -i "/^API_HOST=/d" "$ENV"; echo "API_HOST=$API_HOST" >> "$ENV"
