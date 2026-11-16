@@ -1,0 +1,111 @@
+name: Deploy (staging)
+
+# Depois que o CI passa no master: constrói as imagens (API e meta-sim), publica no GHCR e
+# implanta na VPS por SSH. A chave do Actions só pode executar `deploy <sha>` (comando forçado
+# no authorized_keys do usuário `deploy` → /usr/local/sbin/bm-deploy, ver deploy/bm-deploy.sh).
+# Também pode ser disparado manualmente (Actions → Deploy → Run workflow).
+#
+# Configuração (Settings → Environments → staging), já feita:
+#   secrets.VPS_SSH_KEY    chave privada dedicada (github-actions-bm-deploy)
+#   vars.VPS_HOST          IP da VPS
+#   vars.VPS_KNOWN_HOSTS   chave de host da VPS (ssh-keyscan), evita aceitar host desconhecido
+#   vars.STAGING_URL       ex.: https://bm.179-197-76-7.sslip.io
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: staging
+    env:
+      SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SHA }}
+
+      - name: Tag curta
+        run: echo "TAG=${SHA::7}" >> "$GITHUB_ENV"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build e push da API
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/yuurivergara/bm-api:${{ env.TAG }}
+            ghcr.io/yuurivergara/bm-api:staging
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,mode=max,scope=api
+          # liga o pacote ao repositório: o GITHUB_TOKEN do job consegue baixá-lo na VPS
+          labels: org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+
+      # Simulador da Meta usado no staging (docker-compose.sim.yml); nunca exposto publicamente.
+      - name: Build e push do meta-sim
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/meta-sim/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/yuurivergara/bm-meta-sim:${{ env.TAG }}
+            ghcr.io/yuurivergara/bm-meta-sim:staging
+          cache-from: type=gha,scope=meta-sim
+          cache-to: type=gha,mode=max,scope=meta-sim
+          # liga o pacote ao repositório: o GITHUB_TOKEN do job consegue baixá-lo na VPS
+          labels: org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+
+      - name: Implantar na VPS
+        env:
+          SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          KNOWN_HOSTS: ${{ vars.VPS_KNOWN_HOSTS }}
+          HOST: ${{ vars.VPS_HOST }}
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key && chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          # O token do GHCR vai pelo stdin (nunca na linha de comando) e expira ao fim do job.
+          printf '%s\n%s\n' "$GHCR_USER" "$GHCR_TOKEN" \
+            | ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+                "deploy@$HOST" "deploy $TAG"
+
+      - name: Smoke test
+        env:
+          STAGING_URL: ${{ vars.STAGING_URL }}
+        run: |
+          for _ in $(seq 1 12); do
+            curl -fsS "$STAGING_URL/readyz" && exit 0
+            sleep 5
+          done
+          echo "readyz não respondeu"; exit 1
+
+      - name: Limpar chave
+        if: always()
+        run: rm -f ~/.ssh/deploy_key

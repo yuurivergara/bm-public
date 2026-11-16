@@ -1,0 +1,336 @@
+<title>Produção e copy-whats</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: coluna única de leitura; cabeçalho com progresso; cada decisão é um bloco com opções lado a lado que viram uma coluna no celular. */
+:root{
+  --bg:#F3F5F2; --surface:#FFFFFF; --ink:#18211D; --muted:#5B6862; --line:#D9DFDA;
+  --accent:#0E6B5F; --accent-soft:#E1F0EC; --rec:#A0660E; --rec-soft:#FBEFD9;
+  --ok:#2F7A3B; --warn:#9A5B00;
+  --f-display:"Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --f-body:"IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --f-mono:"IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#111614; --surface:#19201D; --ink:#E4EBE7; --muted:#97A59F; --line:#2B3531;
+  --accent:#56C2AE; --accent-soft:#163430; --rec:#E2B25A; --rec-soft:#3A2D14;
+  --ok:#7FC98A; --warn:#E2B25A; color-scheme:dark }}
+:root[data-theme="dark"]{
+  --bg:#111614; --surface:#19201D; --ink:#E4EBE7; --muted:#97A59F; --line:#2B3531;
+  --accent:#56C2AE; --accent-soft:#163430; --rec:#E2B25A; --rec-soft:#3A2D14;
+  --ok:#7FC98A; --warn:#E2B25A; color-scheme:dark }
+*{box-sizing:border-box}
+body{background:var(--bg); color:var(--ink); font-family:var(--f-body); font-size:15px; line-height:1.55}
+.wrap{max-width:980px; margin:0 auto; padding-block:28px 64px;
+  padding-left:max(16px, env(safe-area-inset-left, 0px)); padding-right:max(16px, env(safe-area-inset-right, 0px));
+  display:flex; flex-direction:column; gap:28px}
+h1,h2,h3{font-family:var(--f-display); text-wrap:balance; margin:0; line-height:1.15}
+h1{font-size:clamp(26px,4.4vw,38px)}
+h2{font-size:21px}
+h3{font-size:18px}
+p{margin:0}
+.eyebrow{font-family:var(--f-mono); font-size:12px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted)}
+header{display:flex; flex-direction:column; gap:12px}
+.lead{color:var(--muted); max-width:68ch}
+.progress{display:flex; align-items:center; gap:12px; flex-wrap:wrap}
+.bar{flex:1 1 220px; height:8px; background:var(--line); border-radius:99px; overflow:hidden}
+.bar i{display:block; height:100%; width:0; background:var(--accent); transition:width .3s}
+.count{font-family:var(--f-mono); font-variant-numeric:tabular-nums; font-size:13px}
+.save{font-size:13px; color:var(--muted)}
+.save.err{color:var(--warn)}
+.filters{display:flex; gap:8px; flex-wrap:wrap}
+.filters button{font:inherit; font-size:13px; padding:5px 12px; border-radius:99px; border:1px solid var(--line); background:var(--surface); color:var(--ink); cursor:pointer}
+.filters button[aria-pressed="true"]{background:var(--ink); color:var(--bg); border-color:var(--ink)}
+.facts{display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:16px}
+.facts section{background:var(--surface); border:1px solid var(--line); border-radius:10px; padding:16px 18px; display:flex; flex-direction:column; gap:8px; min-width:0}
+.facts ul{margin:0; padding-left:18px; display:flex; flex-direction:column; gap:4px}
+.group{display:flex; flex-direction:column; gap:16px}
+.group > .eyebrow{border-bottom:1px solid var(--line); padding-bottom:6px}
+.dec{background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:20px; display:flex; flex-direction:column; gap:14px; scroll-margin-top:16px}
+.dec.done{border-color:color-mix(in srgb, var(--accent) 45%, var(--line))}
+.dec-head{display:flex; justify-content:space-between; gap:12px; align-items:flex-start}
+.dec-head > div{display:flex; flex-direction:column; gap:6px; min-width:0}
+.pill{flex:none; font-family:var(--f-mono); font-size:11px; letter-spacing:.06em; text-transform:uppercase; padding:3px 9px; border-radius:99px; border:1px solid var(--line); color:var(--muted); white-space:nowrap}
+.dec.done .pill{background:var(--accent-soft); color:var(--accent); border-color:transparent}
+.ctx{color:var(--muted); max-width:72ch}
+.opts{display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:10px}
+.opt{font:inherit; color:inherit; text-align:left; background:var(--bg); border:1.5px solid var(--line); border-radius:10px; padding:14px; cursor:pointer; display:flex; flex-direction:column; gap:8px; min-width:0}
+.opt:hover{border-color:var(--muted)}
+.opt:focus-visible,.filters button:focus-visible,textarea:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+.opt[aria-checked="true"]{border-color:var(--accent); background:var(--accent-soft)}
+.opt-top{display:flex; justify-content:space-between; gap:8px; align-items:baseline; flex-wrap:wrap}
+.opt-name{font-weight:600}
+.tag-rec{font-family:var(--f-mono); font-size:10.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--rec); background:var(--rec-soft); padding:2px 7px; border-radius:4px}
+.opt-sum{font-size:14px}
+.opt ul{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:3px; font-size:13.5px}
+.opt li{padding-left:16px; position:relative}
+.opt li::before{position:absolute; left:0; font-family:var(--f-mono)}
+.opt li.pro::before{content:"+"; color:var(--ok)}
+.opt li.con::before{content:"−"; color:var(--warn)}
+.cost{font-family:var(--f-mono); font-size:12.5px; color:var(--muted); border-top:1px dashed var(--line); padding-top:6px}
+.musk{font-size:14px; border-left:3px solid var(--rec); padding:2px 0 2px 12px}
+.musk b{font-family:var(--f-mono); font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--rec); margin-right:6px}
+label.note{display:flex; flex-direction:column; gap:4px; font-size:13px; color:var(--muted)}
+textarea{font:inherit; font-size:14px; color:var(--ink); background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:8px 10px; min-height:44px; resize:vertical; width:100%}
+.src{font-size:12.5px; color:var(--muted)}
+.src a{color:var(--accent)}
+@media (prefers-reduced-motion: reduce){.bar i{transition:none}}
+</style>
+
+<div class="wrap">
+  <header>
+    <span class="eyebrow" id="eyebrow"></span>
+    <h1 id="h1"></h1>
+    <p class="lead" id="lead"></p>
+    <div class="progress">
+      <div class="bar" aria-hidden="true"><i id="barfill"></i></div>
+      <span class="count" id="count"></span>
+      <span class="save" id="save" role="status">Carregando suas escolhas…</span>
+    </div>
+    <div class="filters" role="group" aria-label="Filtrar decisões">
+      <button type="button" data-f="todas" aria-pressed="true">Todas</button>
+      <button type="button" data-f="pendentes" aria-pressed="false">Pendentes</button>
+      <button type="button" data-f="decididas" aria-pressed="false">Decididas</button>
+    </div>
+  </header>
+  <div class="facts" id="facts"></div>
+  <main id="main" style="display:flex;flex-direction:column;gap:32px"></main>
+  <p class="src" id="src"></p>
+</div>
+
+<!-- DADOS: para uma nova página, troque só este bloco JSON. -->
+<script type="application/json" id="dados">
+{
+ "meta": {
+  "slug": "bm-infra-producao-v1",
+  "titulo": "Produção e copy-whats",
+  "eyebrow": "BM pública · infra · 16/11/2026",
+  "resumo": "Duas decisões de infraestrutura antes do piloto. Marque uma opção em cada uma (e uma nota, se quiser); o Musk lê as escolhas daqui.",
+  "fontes": "Preços Hostinger KVM 2 em agregadores e guias de nov/2026 (horadecodar.com.br, valebyte.com, vpsbenchmarks.com) — estimativas, conferir no site da Hostinger antes de contratar. AWS: estimativa de docs/06-custos.md §4. Atividade do copy-whats: logs do container na VPS BMS (1.416 linhas em 7 dias, último em 16/11 às 03:53)."
+ },
+ "blocos": [
+  {
+   "titulo": "Já decidido",
+   "itens": [
+    "Staging fica na VPS BMS (D-16a), com meta-sim e sem token de cliente real.",
+    "Deploy automático por GitHub Actions → GHCR → SSH com comando forçado (D-16b); a Coolify fica só como proxy/TLS.",
+    "A plataforma oficial não divide servidor de produção com Evolution/Baileys (D-16)."
+   ]
+  },
+  {
+   "titulo": "Esperando a Meta",
+   "itens": [
+    "Verificação da empresa e App Review (acesso avançado a whatsapp_business_management/messaging) — sem isso não há piloto com cliente real, então a VPS de produção só precisa existir antes do piloto."
+   ]
+  }
+ ],
+ "secoes": [
+  {
+   "titulo": "Infraestrutura",
+   "decisoes": [
+    {
+     "id": "vps-producao",
+     "pergunta": "Onde roda a produção (piloto com tokens reais de clientes)?",
+     "contexto": "A VPS BMS divide o host com a Vendra (Evolution) e o copy-whats (Baileys). Produção vai guardar tokens Meta de clientes e o app secret; um comprometimento de uma pilha não oficial no mesmo host expõe tudo. Os scripts (provision.sh, bm-deploy, compose) já servem para qualquer VPS Ubuntu.",
+     "opcoes": [
+      {
+       "id": "nova-vps",
+       "nome": "Nova VPS dedicada (Hostinger KVM 2)",
+       "rec": true,
+       "resumo": "2 vCPU, 8 GB RAM, 100 GB NVMe, só com a plataforma. Mesmo provedor da BMS.",
+       "pros": [
+        "Isolamento exigido pelo D-16 sem mexer na Vendra",
+        "Provisionamento já pronto (provision.sh + chave do Actions): ~1 h de setup",
+        "Staging continua na BMS, separado de produção"
+       ],
+       "contras": [
+        "Mais uma máquina para pagar e acompanhar",
+        "Backup fora da VPS continua obrigatório (R2 ou similar)"
+       ],
+       "custo": "Estimativa: ~R$ 39–90/mês (promoção em contrato longo vs. preço cheio; renovação ~R$ 70/mês)"
+      },
+      {
+       "id": "bms-limpa",
+       "nome": "Tirar Vendra e copy-whats da BMS e usar a BMS como produção",
+       "resumo": "Migra as pilhas não oficiais para outro servidor e promove a BMS.",
+       "pros": [
+        "Sem custo de servidor novo para a plataforma"
+       ],
+       "contras": [
+        "Migrar produção de outro projeto (Vendra) com risco de queda",
+        "Ainda precisaria de outro servidor para a Vendra/copy-whats",
+        "BMS também roda Coolify, bms-* e Gitea: produção continuaria dividindo host"
+       ],
+       "custo": "Servidor novo para a Vendra + horas de migração"
+      },
+      {
+       "id": "aws",
+       "nome": "AWS sa-east-1 (arquitetura original do doc 02)",
+       "resumo": "ECS + RDS + ElastiCache gerenciados.",
+       "pros": [
+        "Backups, failover e escala gerenciados",
+        "Pronto para os ~200 clientes sem trocar de infra"
+       ],
+       "contras": [
+        "Custo alto para o piloto",
+        "Mais trabalho de infra (Terraform) agora"
+       ],
+       "custo": "Estimativa docs/06: ~US$ 435–655/mês só produção (≈ R$ 2,4–3,6 mil)"
+      }
+     ],
+     "recomendacao": "Nova VPS dedicada: resolve o isolamento por algumas dezenas de reais, sem tocar na Vendra, e os scripts já estão prontos. AWS só quando o volume passar do que uma VPS aguenta."
+    },
+    {
+     "id": "copy-whats",
+     "pergunta": "O que fazer com o copy-whats (Baileys) na VPS BMS?",
+     "contexto": "Está ativo (logs de hoje de madrugada). Não afeta a produção se ela for para outra VPS, mas o staging fica no mesmo host — e se o staging for ligado ao app real da Meta (set-meta-app.sh), o app secret ficaria ao lado de uma pilha não oficial.",
+     "opcoes": [
+      {
+       "id": "manter",
+       "nome": "Manter como está",
+       "rec": true,
+       "resumo": "Continua na BMS; o staging segue só com o simulador ou com um app de teste separado da Meta.",
+       "pros": [
+        "Zero trabalho",
+        "Não interrompe o que usa o copy-whats"
+       ],
+       "contras": [
+        "Não ligar o app de produção da Meta no staging da BMS"
+       ],
+       "custo": "—"
+      },
+      {
+       "id": "mover",
+       "nome": "Mover para outra máquina",
+       "resumo": "Ex.: a máquina de games (Regxa) ou uma VPS pequena.",
+       "pros": [
+        "BMS sem Baileys; staging pode usar o app real"
+       ],
+       "contras": [
+        "Migração e possível reconexão da sessão do WhatsApp"
+       ],
+       "custo": "VPS pequena ou espaço em máquina existente + ~1 h"
+      },
+      {
+       "id": "desligar",
+       "nome": "Desligar",
+       "resumo": "Se não é mais usado.",
+       "pros": [
+        "Menos risco e consumo na BMS"
+       ],
+       "contras": [
+        "Quebra o que ainda depende dele (os logs mostram uso)"
+       ],
+       "custo": "—"
+      }
+     ],
+     "recomendacao": "Manter: com produção em VPS própria, o copy-whats só limita o staging, e basta testar a Meta real com um app de teste separado."
+    }
+   ]
+  }
+ ]
+}
+</script>
+
+<script>
+(function(){
+  const D = JSON.parse(document.getElementById('dados').textContent);
+  const $ = (s, el=document) => el.querySelector(s);
+  const h = (tag, attrs={}, ...kids) => { const e=document.createElement(tag);
+    for (const [k,v] of Object.entries(attrs)) { if (k==='class') e.className=v; else if (k==='text') e.textContent=v; else e.setAttribute(k,v); }
+    for (const k of kids) if (k) e.append(k); return e; };
+  const LS_KEY = 'decisoes:' + (D.meta.slug || 'pagina');
+  let state = {}; try { state = JSON.parse(localStorage.getItem(LS_KEY) || '{}'); } catch(e) {}
+  let db = null, filtro = 'todas';
+  const all = D.secoes.flatMap(s => s.decisoes);
+
+  document.title = D.meta.titulo;
+  $('#eyebrow').textContent = D.meta.eyebrow || '';
+  $('#h1').textContent = D.meta.titulo;
+  $('#lead').textContent = D.meta.resumo || '';
+  if (D.meta.fontes) { $('#src').textContent = D.meta.fontes; }
+
+  for (const box of (D.blocos || [])) {
+    const ul = h('ul'); box.itens.forEach(t => ul.append(h('li',{text:t})));
+    $('#facts').append(h('section',{}, h('span',{class:'eyebrow',text:box.titulo}), ul));
+  }
+
+  for (const sec of D.secoes) {
+    const g = h('section',{class:'group'}, h('h2',{class:'eyebrow',text:sec.titulo}));
+    for (const d of sec.decisoes) {
+      const card = h('article',{class:'dec', id:'d-'+d.id});
+      const head = h('div',{class:'dec-head'},
+        h('div',{}, h('h3',{text:d.pergunta}), d.contexto ? h('p',{class:'ctx',text:d.contexto}) : null),
+        h('span',{class:'pill'}));
+      const opts = h('div',{class:'opts', role:'radiogroup', 'aria-label':d.pergunta});
+      for (const o of d.opcoes) {
+        const b = h('button',{type:'button', class:'opt', role:'radio', 'aria-checked':'false', 'data-o':o.id});
+        const top = h('div',{class:'opt-top'}, h('span',{class:'opt-name',text:o.nome}), o.rec ? h('span',{class:'tag-rec',text:'Recomendado'}) : null);
+        b.append(top);
+        if (o.resumo) b.append(h('p',{class:'opt-sum',text:o.resumo}));
+        if ((o.pros||[]).length || (o.contras||[]).length) {
+          const ul = h('ul'); (o.pros||[]).forEach(t=>ul.append(h('li',{class:'pro',text:t}))); (o.contras||[]).forEach(t=>ul.append(h('li',{class:'con',text:t})));
+          b.append(ul);
+        }
+        if (o.custo) b.append(h('p',{class:'cost',text:o.custo}));
+        b.addEventListener('click', () => escolher(d.id, state[d.id]?.escolha === o.id ? null : o.id));
+        opts.append(b);
+      }
+      card.append(head, opts);
+      if (d.recomendacao) { const m = h('p',{class:'musk'}, h('b',{text:'Musk'})); m.append(d.recomendacao); card.append(m); }
+      const ta = h('textarea',{id:'n-'+d.id, rows:'2', placeholder:'Ex.: "sim, mas só no plano caro"'});
+      let t; ta.addEventListener('input', () => { clearTimeout(t); t = setTimeout(() => salvar(d.id, {nota: ta.value}), 700); });
+      card.append(h('label',{class:'note', for:'n-'+d.id}, document.createTextNode('Observação (opcional)'), ta));
+      g.append(card);
+    }
+    $('#main').append(g);
+  }
+
+  function render(){
+    let n = 0;
+    for (const d of all) {
+      const s = state[d.id] || {}; const card = $('#d-'+d.id);
+      const done = !!s.escolha; if (done) n++;
+      card.classList.toggle('done', done);
+      const o = d.opcoes.find(x => x.id === s.escolha);
+      $('.pill', card).textContent = done ? 'Decidido' : 'Pendente';
+      card.querySelectorAll('.opt').forEach(b => b.setAttribute('aria-checked', String(b.dataset.o === s.escolha)));
+      const ta = $('#n-'+d.id); if (document.activeElement !== ta) ta.value = s.nota || '';
+      card.hidden = (filtro === 'pendentes' && done) || (filtro === 'decididas' && !done);
+    }
+    $('#count').textContent = n + ' de ' + all.length + ' decididas';
+    $('#barfill').style.width = (all.length ? (100*n/all.length) : 0) + '%';
+  }
+
+  function msg(t, err){ const s=$('#save'); s.textContent=t; s.classList.toggle('err', !!err); }
+
+  async function salvar(id, patch){
+    const atual = Object.assign({}, state[id] || {}, patch, {em: new Date().toISOString()});
+    state[id] = atual; render();
+    try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch(e) {}
+    if (!db) { msg('Salvo só neste navegador. O Musk não vai ver; avise no chat.', true); return; }
+    try { await db.doc('decisoes/'+id).set(atual); msg('Salvo. O Musk já consegue ler.'); }
+    catch(e) { msg('Não salvou (' + (e && e.code || 'erro') + '). Tente de novo.', true); }
+  }
+  function escolher(id, oid){ salvar(id, {escolha: oid}); }
+
+  document.querySelectorAll('.filters button').forEach(b => b.addEventListener('click', () => {
+    filtro = b.dataset.f; document.querySelectorAll('.filters button').forEach(x => x.setAttribute('aria-pressed', String(x===b))); render();
+  }));
+
+  render();
+
+  const timer = setTimeout(() => msg('Não consegui conectar ao armazenamento. Escolhas ficam só neste navegador.', true), 10000);
+  (async () => {
+    try { db = window.claude && await window.claude.use('db'); } catch(e) { db = null; }
+    if (!db) { clearTimeout(timer); msg('Escolhas ficam só neste navegador. Avise o Musk no chat.', true); return; }
+    db.collection('decisoes').onSnapshot(snap => {
+      if (!snap.metadata.fromCache) { clearTimeout(timer); msg('Conectado. Cada clique é salvo.'); }
+      for (const doc of snap.docs) { const v = doc.data(); if (v) state[doc.id] = Object.assign({}, v); }
+      render();
+    }, e => { clearTimeout(timer); msg('Conexão perdida (' + e.code + ').', true); });
+  })();
+})();
+</script>

@@ -1,0 +1,29 @@
+# Ambiente local de desenvolvimento. Nunca use dados reais de clientes aqui.
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: bm_owner
+      POSTGRES_PASSWORD: bm_owner
+      POSTGRES_DB: bm
+    ports: ["5432:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bm_owner -d bm"]
+      interval: 5s
+      retries: 10
+  redis:
+    image: redis:7
+    ports: ["6379:6379"]
+  # Armazenamento S3 local (só necessário a partir da S4 — importação de planilhas).
+  # Opcional: suba com `docker compose --profile storage up -d`.
+  # A MinIO deixou de publicar imagens comunitárias no Docker Hub; usamos o SeaweedFS (S3 compatível).
+  s3:
+    image: chrislusf/seaweedfs:3.97
+    profiles: [storage]
+    command: server -s3 -dir=/data
+    ports: ["8333:8333"]
+    volumes: [s3data:/data]
+volumes:
+  pgdata:
+  s3data:

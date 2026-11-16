@@ -1,0 +1,20 @@
+# Override de STAGING: sobe o meta-sim (rede interna, sem porta publicada) e aponta a API para ele.
+# Os webhooks do simulador vão pela URL pública (Traefik + TLS), como os da Meta.
+services:
+  meta-sim:
+    image: ghcr.io/yuurivergara/bm-meta-sim:${IMAGE_TAG:-staging}
+    pull_policy: ${PULL_POLICY:-always}
+    restart: unless-stopped
+    environment:
+      - SIM_APP_SECRET=${META_APP_SECRET:?}
+      - SIM_GRAPH_VERSION=${META_GRAPH_VERSION:-v27.0}
+      - SIM_WEBHOOK_URL=https://${API_HOST:?}/webhooks/meta
+      - SIM_DEMO_TOKEN=${SIM_DEMO_TOKEN:-}
+    deploy:
+      resources:
+        limits:
+          memory: 192m
+
+  api:
+    environment:
+      - META_GRAPH_BASE_URL=http://meta-sim:4010

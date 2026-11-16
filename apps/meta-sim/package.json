@@ -1,0 +1,24 @@
+{
+  "name": "@bm/meta-sim",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Simulador da Graph API / Cloud API da Meta para dev, CI e staging (docs/08-plano-de-testes.md §2)",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "start": "node dist/main.js",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@bm/meta-client": "workspace:*",
+    "fastify": "^5.12.8"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.7"
+  },
+  "files": [
+    "dist"
+  ]
+}
