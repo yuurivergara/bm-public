@@ -67,5 +67,64 @@ SYNC="$(api -X POST "$BASE/api/v1/tenants/$TENANT/assets/sync" -d "{}")"
 [[ "$(jq -r '.syncErrors | length' <<<"$SYNC")" == 0 ]] || fail "erros no sync: $(jq -c .syncErrors <<<"$SYNC")"
 ok "sync ok (limite do portfolio: $(jq -r '.portfolios[0].messagingLimitTier' <<<"$SYNC"))"
 
+# ---------------------------------------------------------------- S3
+sim() { # sim <método> <caminho> [json] — rota de controle do meta-sim (só na rede interna)
+  local js
+  js="fetch('http://127.0.0.1:4010$2', { method: '$1', headers: { 'content-type': 'application/json' }, body: process.argv[2] || undefined })
+    .then(async (r) => { const t = await r.text(); if (!r.ok) { console.error(r.status, t); process.exit(1); } console.log(t); })"
+  ssh "$HOST" "echo $(base64 -w0 <<<"$js") | base64 -d > /tmp/bm-sim.js && docker cp /tmp/bm-sim.js bm-platform-meta-sim-1:/tmp/bm-sim.js >/dev/null && docker exec bm-platform-meta-sim-1 node /tmp/bm-sim.js '${3:-}'"
+}
+
+echo "== 7. número do estoque: atribuir → código → verificar → registrar"
+TENANT2="$(api "$BASE/api/v1/tenants?q=Staging%20S3" | jq -r '.data[0].id // empty')"
+if [[ -z "$TENANT2" ]]; then
+  TENANT2="$(api -X POST "$BASE/api/v1/tenants" -d '{"name":"Staging S3 (meta-sim)"}' | jq -r .id)"
+fi
+A2="$(api -X POST "$BASE/api/v1/tenants/$TENANT2/assets/partner-share" \
+  -d "$(jq -nc --arg t "$TOKEN" '{businessId:"506914307656699",wabaId:"102290129340499",accessToken:$t}')")"
+WABA2="$(jq -r '.portfolios[0].wabas[0].id' <<<"$A2")"
+PROVIDER="$(api "$BASE/api/v1/number-providers" | jq -r '.data[] | select(.name=="Staging (manual)") | .id')"
+[[ -n "$PROVIDER" ]] || PROVIDER="$(api -X POST "$BASE/api/v1/number-providers" -d '{"name":"Staging (manual)"}' | jq -r .id)"
+api "$BASE/api/v1/number-inventory" | jq -e '.data[] | select(.phoneE164=="+5511999990001")' >/dev/null \
+  || api -X POST "$BASE/api/v1/number-inventory" \
+    -d "$(jq -nc --arg p "$PROVIDER" '{providerId:$p,phone:"+5511999990001",monthlyCostBrl:0}')" >/dev/null
+NUM="$(api "$BASE/api/v1/tenants/$TENANT2/number")"
+if [[ "$(jq -r '.phoneNumber.registrationStatus // empty' <<<"$NUM")" != registered ]]; then
+  NUM="$(api -X POST "$BASE/api/v1/tenants/$TENANT2/number/assign" \
+    -d "$(jq -nc --arg w "$WABA2" '{wabaId:$w,verifiedName:"Lucky Shrub 2"}')")"
+  PID="$(jq -r .phoneNumber.id <<<"$NUM")"
+  MPID="$(jq -r .phoneNumber.metaPhoneNumberId <<<"$NUM")"
+  P="$BASE/api/v1/tenants/$TENANT2/phone-numbers/$PID"
+  STEP="$(api -X POST "$P/verification/request" -d '{"method":"SMS"}' | jq -r .phoneNumber.registrationStatus)"
+  if [[ "$STEP" == code_requested ]]; then
+    CODE="$(sim GET "/_sim/verification-codes/$MPID" | jq -r .code)"
+    api -X POST "$P/verification/verify" -d "$(jq -nc --arg c "$CODE" '{code:$c}')" >/dev/null
+  fi
+  NUM="$(api -X POST "$P/register" -d '{}')"
+fi
+[[ "$(jq -r .phoneNumber.registrationStatus <<<"$NUM")" == registered ]] || fail "número não registrado: $NUM"
+ok "número $(jq -r .assignment.phoneE164 <<<"$NUM") registrado (estoque: $(jq -r .assignment.inventoryStatus <<<"$NUM"))"
+
+echo "== 8. template: criar → revisão (webhook pela URL pública) → APPROVED"
+TPL="e2e_$(date +%Y%m%d%H%M%S)"
+CREATED="$(api -X POST "$BASE/api/v1/tenants/$TENANT2/templates" -d "$(jq -nc --arg w "$WABA2" --arg n "$TPL" '{
+  wabaId:$w, name:$n, category:"UTILITY", parameterFormat:"NAMED",
+  components:[{type:"BODY", text:"Olá, {{nome}}! Seu pedido {{pedido}} foi confirmado.",
+    example:{body_text_named_params:[{param_name:"nome",example:"Ana"},{param_name:"pedido",example:"123"}]}}]}')")"
+TID="$(jq -r .id <<<"$CREATED")"
+MTID="$(jq -r .metaTemplateId <<<"$CREATED")"
+[[ "$(jq -r .status <<<"$CREATED")" == PENDING ]] || fail "template não ficou PENDING: $CREATED"
+sim POST "/_sim/templates/$MTID/review" '{"event":"APPROVED"}' | jq -e '.webhook.statuses == [200]' >/dev/null \
+  || fail "o meta-sim não entregou o webhook de aprovação"
+for _ in $(seq 1 20); do
+  ST="$(api "$BASE/api/v1/tenants/$TENANT2/templates" | jq -r --arg id "$TID" '.data[] | select(.id==$id) | .status')"
+  [[ "$ST" == APPROVED ]] && break
+  sleep 1
+done
+[[ "$ST" == APPROVED ]] || fail "template não foi aprovado via webhook (status=$ST)"
+ok "template $TPL aprovado via webhook message_template_status_update"
+api -X DELETE "$BASE/api/v1/tenants/$TENANT2/templates/$TID" -d "{}" >/dev/null
+ok "template de teste apagado (Meta + local)"
+
 echo
 echo "STAGING OK — $BASE"

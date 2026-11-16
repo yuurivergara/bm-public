@@ -126,7 +126,7 @@ gantt
 | CRUD de clientes + configurações (RLS) + transições de status | ✅ | CNPJ alfanumérico suportado (vigente desde jul/2026) |
 | Envelope encryption (chave local em dev) | ✅ | Sem KMS no MVP: `MASTER_KEY` (D-16) |
 | Dockerfile da API | ✅ | Validado via `pnpm deploy`; build Docker roda no CI |
-| Infra de staging (VPS BMS + Coolify) | 🟡 | VPS endurecida com `deploy/provision.sh` (ufw + DOCKER-USER, SSH só chave, usuário `deploy`, atualizações automáticas). Staging no ar em https://bm.179-197-76-7.sslip.io via `deploy/vps-deploy.sh` (ponte manual). Falta o caminho oficial GitHub Actions → GHCR → Coolify (push do branch com escopo `workflow` + configuração Coolify/GitHub, `deploy/README.md`) |
+| Infra de staging (VPS BMS) | ✅ | VPS endurecida (`deploy/provision.sh`). Staging em https://bm.179-197-76-7.sslip.io. Deploy oficial (D-16b): GitHub Actions → GHCR → SSH com comando forçado (`deploy/bm-deploy.sh`); ponte manual `deploy/vps-deploy.sh`. Falta só o push com escopo `workflow` para ativar o Actions |
 | Chave mestra sem KMS (D-16) | ✅ | `MASTER_KEY`/`MASTER_KEY_ID` em staging/prod; `LOCAL_MASTER_KEY` continua só dev/test |
 | Backup contínuo do Postgres fora da VPS + restauração testada | ⏳ | Obrigatório antes do piloto (D-16) |
 | Painel web (Next.js) — tela de login | ⏳ | Previsto junto com S2/S6 |
@@ -144,7 +144,23 @@ gantt
 | Processador de webhooks | ✅ | Fila em Postgres (lease + `SKIP LOCKED`), dedupe 7 dias, backoff até 60 min, `dead` após 8 tentativas |
 | Handlers de ativos | ✅ | `account_update`, `account_review_update`, `business_capability_update`, `phone_number_quality_update`, `phone_number_name_update`, `account_alerts` |
 | Cadastro de ativos por parceria/manual | ✅ | `POST /tenants/:id/assets/partner-share`: valida na Meta, inscreve webhooks, cifra token, idempotente, 409 entre clientes |
-| Sync de limites/qualidade | ✅ | `POST /tenants/:id/assets/sync` (manual); token revogado → conexão `broken`. Agendamento a cada 15 min entra com o worker (S3) |
+| Sync de limites/qualidade | ✅ | `POST /tenants/:id/assets/sync` (manual); token revogado → conexão `broken`. Agendamento a cada 15 min entra com o worker de envio |
 | Critério de aceite no staging | 🟡 | `deploy/staging-e2e.sh` passa com o **meta-sim**. Falta repetir com app + número de teste reais da Meta (depende do App Dashboard) |
 
-**Testes atuais:** 127 (27 shared, 10 banco/RLS, 26 meta-client, 10 meta-sim, 54 API).
+### S3 — Números + templates ✅ (com simulador; falta validar com número/app reais da Meta)
+
+| Item | Status | Observações |
+|---|---|---|
+| Referência oficial (registro de número e templates) | ✅ | `docs/10-meta-referencia.md` §10–§11 |
+| Migration 0003 | ✅ | `number_providers`, `number_inventory`, `number_assignments` (D-13 por índices parciais), etapas de registro em `phone_numbers`, `message_templates`; RLS. Aplicada no staging |
+| Estoque de números (provedor manual) | ✅ | E.164 exato (sem "corrigir" nono dígito), auditoria com telefone mascarado |
+| Registro na WABA | ✅ | atribuir → `POST /{waba}/phone_numbers` → `request_code` (SMS/VOICE) → `verify_code` → `register` com PIN gerado e cifrado. `136024` (já verificado) pula para o registro. Re-registro após aprovação de nome (sinal `NAME_APPROVED_REREGISTER_NEEDED`) |
+| Liberação + quarentena | ✅ | `deregister` + quarentena de `NUMBER_QUARANTINE_DAYS` (90). A Meta não apaga número: reuso exige remover no WhatsApp Manager |
+| Templates por cliente | ✅ | Criar (validação local das regras oficiais + botão de descadastro em marketing), sync (status, categoria, qualidade, apagados fora), excluir um idioma (`hsm_id`) |
+| Webhooks de template | ✅ | `message_template_status_update`, `message_template_quality_update`, `template_category_update` (aviso × efetivação) |
+| meta-sim | ✅ | Endpoints de registro (código consultável em `/_sim/verification-codes/:id`, limite 10/72 h) e de templates; `/_sim/templates/:id/review` emite o webhook de revisão |
+| Critério de aceite no staging | 🟡 | `deploy/staging-e2e.sh` (passos 7–8) registra um número e aprova um template via webhook pela URL pública, com o **meta-sim**. Falta repetir com número e app reais |
+| Biblioteca de templates (aplicar em lote) | ⏳ | S9 Template Manager |
+| Provedor de números com API (código por webhook) | ⏳ | Depende da escolha do provedor (pendência do usuário) |
+
+**Testes atuais:** 147 (27 shared, 10 banco/RLS, 26 meta-client, 10 meta-sim, 74 API).

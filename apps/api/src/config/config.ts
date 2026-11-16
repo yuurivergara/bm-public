@@ -49,6 +49,8 @@ const schema = z.object({
     .default('true')
     .transform((v) => v === 'true'),
   WEBHOOK_PROCESSOR_INTERVAL_MS: z.coerce.number().int().positive().default(2_000),
+  /** Quarentena de número liberado antes do reuso (FR-NUM-05). */
+  NUMBER_QUARANTINE_DAYS: z.coerce.number().int().min(0).max(3650).default(90),
 });
 
 export type AppConfig = z.infer<typeof schema>;

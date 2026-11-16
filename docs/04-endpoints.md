@@ -57,8 +57,14 @@
 | GET | `/number-inventory` | Estoque com filtros de status | V |
 | POST | `/number-inventory` | Cadastra número contratado (ou compra via API do provedor) | O |
 | POST | `/tenants/:id/number/assign` | Atribui número disponível e inicia registro na WABA | Op |
-| POST | `/phone-numbers/:id/verification/request` · `/verify` | Solicita/confirma código (fallback manual) | Op |
+| GET | `/tenants/:id/number` | Número atribuído + etapa do registro | V |
+| POST | `/tenants/:id/phone-numbers/:phoneId/verification/request` · `/verify` | Solicita (`SMS`/`VOICE`) / confirma o código de 6 dígitos | Op |
+| POST | `/tenants/:id/phone-numbers/:phoneId/register` | Registra na Cloud API (PIN de 2 etapas gerado e cifrado pela plataforma). Também serve para re-registro após aprovação de nome | Op |
 | POST | `/tenants/:id/number/release` | Libera número → quarentena (somente em offboarding) | O |
+
+> Implementado no S3. As rotas de número ficam sob `/tenants/:id/…` (e não `/phone-numbers/:id/…`) para que o RLS
+> receba o cliente pela URL. A Meta **não tem API para apagar** um número da WABA (§10 de `docs/10`): depois da
+> quarentena, reaproveitar o número em outro cliente exige removê-lo no WhatsApp Manager da WABA antiga.
 
 ### 1.7 Contatos
 | Método | Rota | Descrição | Perm. |
@@ -79,6 +85,10 @@
 | POST | `/tenants/:id/templates` | Template personalizado (exceção) | Op |
 | POST | `/tenants/:id/templates/sync` | Sincroniza com a Meta | Op |
 | DELETE | `/tenants/:id/templates/:templateId` | Remove na Meta e localmente | O |
+
+> Implementado no S3: criação, sync e exclusão por cliente (a biblioteca `template-library` fica para depois).
+> Exclusão apaga **só aquele idioma** (`hsm_id` + `name`). Marketing exige botão de descadastro (FR-TPL-05).
+> Nome repetido no mesmo idioma → `409 template_exists` (Meta 100/2388024).
 
 ### 1.9 Campanhas
 | Método | Rota | Descrição | Perm. |
@@ -151,7 +161,7 @@ Recebe SMS/transcrição com o código de verificação; validação por assinat
 | Adicionar número | `POST /{waba-id}/phone_numbers` |
 | Solicitar / confirmar código | `POST /{phone-number-id}/request_code` · `POST /{phone-number-id}/verify_code` |
 | Registrar / desregistrar | `POST /{phone-number-id}/register` (PIN de 2 etapas) · `POST /{phone-number-id}/deregister` |
-| Templates | `GET/POST /{waba-id}/message_templates` · `DELETE /{waba-id}/message_templates?name=` |
+| Templates | `GET/POST /{waba-id}/message_templates` · `DELETE /{waba-id}/message_templates?hsm_id=&name=` (só `name` apaga todos os idiomas) |
 | Enviar mensagem | `POST /{phone-number-id}/messages` |
 | Analytics / custos | Endpoints de analytics de preços/conversas da WABA |
 | Modo BSP (futuro) | Linha de crédito: listagem de *extended credits* do portfolio e compartilhamento com a WABA |

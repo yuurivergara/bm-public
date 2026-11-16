@@ -15,6 +15,11 @@ import { ErrorFilter } from './common/http';
 import type { AppConfig } from './config/config';
 import { CoreModule } from './core/core.module';
 import { HealthController } from './health/health.controller';
+import { NumbersController } from './numbers/numbers.controller';
+import { NumbersService } from './numbers/numbers.service';
+import { TEMPLATE_WEBHOOK_HANDLERS } from './templates/template-handlers';
+import { TemplatesController } from './templates/templates.controller';
+import { TemplatesService } from './templates/templates.service';
 import { TenantsController } from './tenants/tenants.controller';
 import { TenantsService } from './tenants/tenants.service';
 import { UsersController } from './users/users.controller';
@@ -52,6 +57,8 @@ class AppModule {
         UsersController,
         TenantsController,
         AssetsController,
+        NumbersController,
+        TemplatesController,
         MetaWebhooksController,
       ],
       providers: [
@@ -61,11 +68,14 @@ class AppModule {
         TenantsService,
         WebhookIngestService,
         AssetsService,
+        NumbersService,
+        TemplatesService,
         ...ASSET_WEBHOOK_HANDLERS,
+        ...TEMPLATE_WEBHOOK_HANDLERS,
         {
           provide: WEBHOOK_HANDLERS,
           useFactory: (...handlers: WebhookFieldHandler[]) => handlers,
-          inject: ASSET_WEBHOOK_HANDLERS,
+          inject: [...ASSET_WEBHOOK_HANDLERS, ...TEMPLATE_WEBHOOK_HANDLERS],
         },
         WebhookProcessor,
         { provide: APP_GUARD, useClass: AuthGuard },

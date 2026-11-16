@@ -63,6 +63,21 @@ async function main() {
       },
       sim.appId,
     );
+    // Segundo cliente de demonstração: WABA sem número (registro de número do estoque, S3).
+    sim.state.addFixture(
+      {
+        token: process.env.SIM_DEMO_TOKEN,
+        business: {
+          id: '506914307656699',
+          name: 'Lucky Shrub 2 (sim)',
+          verification_status: 'verified',
+        },
+        wabas: [
+          { id: '102290129340499', name: 'Lucky Shrub 2', currency: 'BRL', status: 'ACTIVE' },
+        ],
+      },
+      sim.appId,
+    );
   }
   await sim.app.listen({ host: '0.0.0.0', port: Number(process.env.PORT ?? 4010) });
 }

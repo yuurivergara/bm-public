@@ -101,6 +101,8 @@ const CATALOG: Record<number, Entry> = {
   133010: ['fix_request', 'Número não registrado na plataforma'],
   133015: ['retry_slower', 'Número excluído recentemente (aguardar 5 min)'],
   133016: ['retry_slower', 'Muitas tentativas de registro/desregistro'],
+  // §10.2: número já verificado ao pedir código (fora da tabela error-codes; só em phone-numbers.md)
+  136024: ['fix_request', 'Número já verificado: siga para o registro'],
   134011: ['pause_tenant', 'Termos do WhatsApp Payments pendentes'],
   135000: ['pause_campaign', 'Erro nos parâmetros ou mensagem descartada por pacing do portfolio'],
   2494100: ['retry_slower', 'Conta em modo de manutenção'],

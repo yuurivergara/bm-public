@@ -245,10 +245,17 @@ export class PhoneNumberNameUpdateHandler implements WebhookFieldHandler {
       .set({
         ...(decision ? { nameStatus: decision } : {}),
         ...(decision === 'APPROVED' && requested ? { verifiedName: requested } : {}),
+        // §10.4: após aprovação de nome, o número registrado precisa de novo register em até 14 dias
+        ...(decision === 'APPROVED' && phone.registrationStatus === 'registered'
+          ? { registrationError: 'Nome aprovado: re-registre o número em até 14 dias' }
+          : {}),
         updatedAt: new Date(),
       })
       .where(eq(phoneNumbers.id, phone.id));
-    await health(ctx, 'phone_number', phone.id, { status: `NAME_${decision ?? 'UPDATE'}` });
+    const reregister = decision === 'APPROVED' && phone.registrationStatus === 'registered';
+    await health(ctx, 'phone_number', phone.id, {
+      status: reregister ? 'NAME_APPROVED_REREGISTER_NEEDED' : `NAME_${decision ?? 'UPDATE'}`,
+    });
     return PROCESSED;
   }
 }

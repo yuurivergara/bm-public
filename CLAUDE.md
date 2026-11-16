@@ -62,14 +62,16 @@ Definição de pronto: lint, typecheck e testes verdes; CI (`.github/workflows/c
   webhooks (verificação, assinatura, fila em `webhook_events`, processador + handlers de ativos),
   cadastro de ativos por parceria/manual e sync. Referência oficial validada em `docs/10-meta-referencia.md`
   (consulte-a antes de usar qualquer campo/endpoint). 127 testes. Falta validar com app/número reais da Meta.
-- ⏳ Próximo: **S3** — envio (worker BullMQ, capacidade por portfolio, rate limit por número, status via
-  webhook `messages`, agendamento do sync a cada 15 min).
-- 🟡 Infra (D-16/D-16a): staging no ar em https://bm.179-197-76-7.sslip.io (VPS BMS, `/opt/bm-platform`,
-  projeto compose `bm-platform`, com meta-sim). Deploy hoje por `deploy/vps-deploy.sh` (build local → VPS);
-  teste ponta a ponta: `deploy/staging-e2e.sh`. Falta: push com escopo `workflow` e configurar Coolify/GitHub
-  para o caminho oficial (`.github/workflows/deploy.yml`). Pendente antes do piloto: backup contínuo do Postgres
-  fora da VPS + restauração testada, e decidir a VPS de produção (a BMS divide o host com Vendra/Evolution e
-  copy-whats/Baileys).
+- ✅ S3 Números + templates: estoque (provedor manual), registro na WABA (request/verify/register, PIN cifrado),
+  liberação com quarentena, templates por cliente (criar/sync/excluir) e webhooks de template. Migration 0003.
+  147 testes. Staging e2e cobre registro + aprovação via webhook (meta-sim). Falta validar com número/app reais.
+- ⏳ Próximo: **S4 Contatos** (upload CSV/XLSX/TXT, E.164 com nono dígito, dedupe, supressão, listas); depois S5 envio.
+- 🟡 Infra (D-16/D-16a/D-16b): staging no ar em https://bm.179-197-76-7.sslip.io (VPS BMS, `/opt/bm-platform`,
+  projeto compose `bm-platform`, com meta-sim). Deploy oficial: Actions → GHCR → `ssh deploy@… "deploy <sha>"`
+  (comando forçado `deploy/bm-deploy.sh`); ponte manual `deploy/vps-deploy.sh`; teste ponta a ponta
+  `deploy/staging-e2e.sh`; app real da Meta: `deploy/set-meta-app.sh`. Falta push com escopo `workflow`.
+  Pendente antes do piloto: backup contínuo do Postgres fora da VPS + restauração testada, e decidir a VPS de
+  produção (página `decisoes/2026-11-16-infra-producao.html`).
 
 ## Infra / VPS (D-16)
 

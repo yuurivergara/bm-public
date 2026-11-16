@@ -1,0 +1,109 @@
+{
+  "meta": {
+    "slug": "bm-infra-producao-v1",
+    "titulo": "Produção e copy-whats",
+    "eyebrow": "BM pública · infra · 16/11/2026",
+    "resumo": "Duas decisões de infraestrutura antes do piloto. Marque uma opção em cada uma (e uma nota, se quiser); o Musk lê as escolhas daqui.",
+    "fontes": "Preços Hostinger KVM 2 em agregadores e guias de nov/2026 (horadecodar.com.br, valebyte.com, vpsbenchmarks.com) — estimativas, conferir no site da Hostinger antes de contratar. AWS: estimativa de docs/06-custos.md §4. Atividade do copy-whats: logs do container na VPS BMS (1.416 linhas em 7 dias, último em 16/11 às 03:53)."
+  },
+  "blocos": [
+    {
+      "titulo": "Já decidido",
+      "itens": [
+        "Staging fica na VPS BMS (D-16a), com meta-sim e sem token de cliente real.",
+        "Deploy automático por GitHub Actions → GHCR → SSH com comando forçado (D-16b); a Coolify fica só como proxy/TLS.",
+        "A plataforma oficial não divide servidor de produção com Evolution/Baileys (D-16)."
+      ]
+    },
+    {
+      "titulo": "Esperando a Meta",
+      "itens": [
+        "Verificação da empresa e App Review (acesso avançado a whatsapp_business_management/messaging) — sem isso não há piloto com cliente real, então a VPS de produção só precisa existir antes do piloto."
+      ]
+    }
+  ],
+  "secoes": [
+    {
+      "titulo": "Infraestrutura",
+      "decisoes": [
+        {
+          "id": "vps-producao",
+          "pergunta": "Onde roda a produção (piloto com tokens reais de clientes)?",
+          "contexto": "A VPS BMS divide o host com a Vendra (Evolution) e o copy-whats (Baileys). Produção vai guardar tokens Meta de clientes e o app secret; um comprometimento de uma pilha não oficial no mesmo host expõe tudo. Os scripts (provision.sh, bm-deploy, compose) já servem para qualquer VPS Ubuntu.",
+          "opcoes": [
+            {
+              "id": "nova-vps",
+              "nome": "Nova VPS dedicada (Hostinger KVM 2)",
+              "rec": true,
+              "resumo": "2 vCPU, 8 GB RAM, 100 GB NVMe, só com a plataforma. Mesmo provedor da BMS.",
+              "pros": [
+                "Isolamento exigido pelo D-16 sem mexer na Vendra",
+                "Provisionamento já pronto (provision.sh + chave do Actions): ~1 h de setup",
+                "Staging continua na BMS, separado de produção"
+              ],
+              "contras": [
+                "Mais uma máquina para pagar e acompanhar",
+                "Backup fora da VPS continua obrigatório (R2 ou similar)"
+              ],
+              "custo": "Estimativa: ~R$ 39–90/mês (promoção em contrato longo vs. preço cheio; renovação ~R$ 70/mês)"
+            },
+            {
+              "id": "bms-limpa",
+              "nome": "Tirar Vendra e copy-whats da BMS e usar a BMS como produção",
+              "resumo": "Migra as pilhas não oficiais para outro servidor e promove a BMS.",
+              "pros": ["Sem custo de servidor novo para a plataforma"],
+              "contras": [
+                "Migrar produção de outro projeto (Vendra) com risco de queda",
+                "Ainda precisaria de outro servidor para a Vendra/copy-whats",
+                "BMS também roda Coolify, bms-* e Gitea: produção continuaria dividindo host"
+              ],
+              "custo": "Servidor novo para a Vendra + horas de migração"
+            },
+            {
+              "id": "aws",
+              "nome": "AWS sa-east-1 (arquitetura original do doc 02)",
+              "resumo": "ECS + RDS + ElastiCache gerenciados.",
+              "pros": ["Backups, failover e escala gerenciados", "Pronto para os ~200 clientes sem trocar de infra"],
+              "contras": ["Custo alto para o piloto", "Mais trabalho de infra (Terraform) agora"],
+              "custo": "Estimativa docs/06: ~US$ 435–655/mês só produção (≈ R$ 2,4–3,6 mil)"
+            }
+          ],
+          "recomendacao": "Nova VPS dedicada: resolve o isolamento por algumas dezenas de reais, sem tocar na Vendra, e os scripts já estão prontos. AWS só quando o volume passar do que uma VPS aguenta."
+        },
+        {
+          "id": "copy-whats",
+          "pergunta": "O que fazer com o copy-whats (Baileys) na VPS BMS?",
+          "contexto": "Está ativo (logs de hoje de madrugada). Não afeta a produção se ela for para outra VPS, mas o staging fica no mesmo host — e se o staging for ligado ao app real da Meta (set-meta-app.sh), o app secret ficaria ao lado de uma pilha não oficial.",
+          "opcoes": [
+            {
+              "id": "manter",
+              "nome": "Manter como está",
+              "rec": true,
+              "resumo": "Continua na BMS; o staging segue só com o simulador ou com um app de teste separado da Meta.",
+              "pros": ["Zero trabalho", "Não interrompe o que usa o copy-whats"],
+              "contras": ["Não ligar o app de produção da Meta no staging da BMS"],
+              "custo": "—"
+            },
+            {
+              "id": "mover",
+              "nome": "Mover para outra máquina",
+              "resumo": "Ex.: a máquina de games (Regxa) ou uma VPS pequena.",
+              "pros": ["BMS sem Baileys; staging pode usar o app real"],
+              "contras": ["Migração e possível reconexão da sessão do WhatsApp"],
+              "custo": "VPS pequena ou espaço em máquina existente + ~1 h"
+            },
+            {
+              "id": "desligar",
+              "nome": "Desligar",
+              "resumo": "Se não é mais usado.",
+              "pros": ["Menos risco e consumo na BMS"],
+              "contras": ["Quebra o que ainda depende dele (os logs mostram uso)"],
+              "custo": "—"
+            }
+          ],
+          "recomendacao": "Manter: com produção em VPS própria, o copy-whats só limita o staging, e basta testar a Meta real com um app de teste separado."
+        }
+      ]
+    }
+  ]
+}

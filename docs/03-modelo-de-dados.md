@@ -225,7 +225,7 @@ create table phone_numbers (
   meta_phone_number_id text not null unique,
   phone_e164 text not null,
   verified_name text,
-  name_status text,                          -- APPROVED | PENDING | DECLINED ...
+  name_status text,                          -- APPROVED | AVAILABLE_WITHOUT_REVIEW | DECLINED | EXPIRED | PENDING_REVIEW | NONE (docs/10 §10)
   quality_rating text,                       -- GREEN | YELLOW | RED | UNKNOWN
   throughput_level text,
   code_verification_status text,
@@ -375,7 +375,7 @@ create table message_templates (
   category text,                             -- categoria atual (pode ser reclassificada)
   submitted_category text,
   status text not null,                      -- PENDING | APPROVED | REJECTED | PAUSED | DISABLED ...
-  quality_score text,
+  quality_score text,                        -- GREEN|YELLOW|RED|UNKNOWN (a Meta devolve {score,date}; guardamos o score)
   rejection_reason text,
   components jsonb not null,
   last_status_at timestamptz,
@@ -384,6 +384,13 @@ create table message_templates (
 );
 create index on message_templates (tenant_id, status);
 ```
+
+> **Migration 0003 (S3)** — implementado com estas diferenças: `message_templates` ganhou `previous_category`,
+> `parameter_format`, `meta_raw`, `synced_at`, `created_by`, `updated_at`; `library_template_id`/`library_version`
+> ficam para a biblioteca de templates. `phone_numbers` ganhou `registration_status`
+> (`added → code_requested → code_verified → registered | deregistered`), `registration_error` e o PIN de duas
+> etapas cifrado (`two_step_pin_enc` + `pin_key_id`). D-13 é garantido no banco por índices únicos parciais em
+> `number_assignments` (um número ativo por cliente e uma atribuição ativa por número).
 
 ### 4.7 Campanhas e mensagens (alto volume)
 

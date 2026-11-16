@@ -11,6 +11,7 @@ import {
   smallint,
   text,
   timestamp,
+  unique,
   uuid,
 } from 'drizzle-orm/pg-core';
 
@@ -227,7 +228,19 @@ export const phoneNumbers = pgTable('phone_numbers', {
   syncedAt: ts('synced_at'),
   createdAt: ts('created_at').notNull().defaultNow(),
   updatedAt: ts('updated_at').notNull().defaultNow(),
+  inventoryId: uuid('inventory_id').references(() => numberInventory.id),
+  registrationStatus: text('registration_status').$type<RegistrationStatus>(),
+  registrationError: text('registration_error'),
+  twoStepPinEnc: bytea('two_step_pin_enc'),
+  pinKeyId: text('pin_key_id'),
 });
+
+export type RegistrationStatus =
+  | 'added'
+  | 'code_requested'
+  | 'code_verified'
+  | 'registered'
+  | 'deregistered';
 
 export type HealthEntity = 'portfolio' | 'waba' | 'phone_number' | 'template';
 
@@ -280,6 +293,85 @@ export const webhookEvents = pgTable('webhook_events', {
   error: text('error'),
 });
 
+// ---------------------------------------------------------------- S3: números e templates
+
+export type NumberProviderKind = 'manual' | 'sms_webhook' | 'voice_transcription';
+export type InventoryStatus = 'available' | 'verifying' | 'active' | 'quarantine' | 'cancelled';
+
+export const numberProviders = pgTable('number_providers', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: text('name').notNull().unique(),
+  apiKind: text('api_kind').$type<NumberProviderKind>().notNull(),
+  configEnc: bytea('config_enc'),
+  keyId: text('key_id'),
+  createdAt: ts('created_at').notNull().defaultNow(),
+  updatedAt: ts('updated_at').notNull().defaultNow(),
+});
+
+export const numberInventory = pgTable('number_inventory', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  providerId: uuid('provider_id')
+    .notNull()
+    .references(() => numberProviders.id),
+  phoneE164: text('phone_e164').notNull().unique(),
+  monthlyCostBrl: numeric('monthly_cost_brl', { precision: 10, scale: 2 }).notNull().default('0'),
+  status: text('status').$type<InventoryStatus>().notNull().default('available'),
+  quarantineUntil: ts('quarantine_until'),
+  notes: text('notes'),
+  acquiredAt: ts('acquired_at').notNull().defaultNow(),
+  cancelledAt: ts('cancelled_at'),
+  createdAt: ts('created_at').notNull().defaultNow(),
+  updatedAt: ts('updated_at').notNull().defaultNow(),
+});
+
+export const numberAssignments = pgTable('number_assignments', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  inventoryId: uuid('inventory_id')
+    .notNull()
+    .references(() => numberInventory.id),
+  tenantId: uuid('tenant_id')
+    .notNull()
+    .references(() => tenants.id, { onDelete: 'cascade' }),
+  phoneNumberId: uuid('phone_number_id').references(() => phoneNumbers.id, {
+    onDelete: 'set null',
+  }),
+  assignedBy: uuid('assigned_by').references(() => users.id),
+  assignedAt: ts('assigned_at').notNull().defaultNow(),
+  releasedAt: ts('released_at'),
+  releaseReason: text('release_reason'),
+});
+
+export const messageTemplates = pgTable(
+  'message_templates',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    wabaId: uuid('waba_id')
+      .notNull()
+      .references(() => whatsappAccounts.id, { onDelete: 'cascade' }),
+    metaTemplateId: text('meta_template_id').unique(),
+    name: text('name').notNull(),
+    language: text('language').notNull(),
+    category: text('category'),
+    submittedCategory: text('submitted_category'),
+    previousCategory: text('previous_category'),
+    parameterFormat: text('parameter_format'),
+    status: text('status').notNull().default('PENDING'),
+    qualityScore: text('quality_score'),
+    rejectionReason: text('rejection_reason'),
+    components: jsonb('components').notNull(),
+    metaRaw: jsonb('meta_raw'),
+    lastStatusAt: ts('last_status_at'),
+    syncedAt: ts('synced_at'),
+    createdBy: uuid('created_by').references(() => users.id),
+    createdAt: ts('created_at').notNull().defaultNow(),
+    updatedAt: ts('updated_at').notNull().defaultNow(),
+  },
+  (t) => [unique('message_templates_waba_id_name_language_key').on(t.wabaId, t.name, t.language)],
+);
+
 export const schema = {
   users,
   userSessions,
@@ -294,4 +386,8 @@ export const schema = {
   accountHealth,
   metaAssetRoutes,
   webhookEvents,
+  numberProviders,
+  numberInventory,
+  numberAssignments,
+  messageTemplates,
 };

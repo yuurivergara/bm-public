@@ -32,7 +32,54 @@ export const FIELDS = {
     'throughput',
     'whatsapp_business_manager_messaging_limit',
   ],
+  // §11.3 — `quality_score` é objeto ({score, date, reason?}); motivo = `rejected_reason`
+  template: [
+    'id',
+    'name',
+    'language',
+    'status',
+    'category',
+    'components',
+    'parameter_format',
+    'quality_score',
+    'rejected_reason',
+    'previous_category',
+    'correct_category',
+    'sub_category',
+    'last_updated_time',
+  ],
 } as const;
+
+export type TemplateCategory = 'AUTHENTICATION' | 'MARKETING' | 'UTILITY';
+
+export interface MetaTemplate extends Open {
+  id: string;
+  name: string;
+  language: string;
+  status?: string;
+  category?: string;
+  components?: unknown[];
+  parameter_format?: string;
+  quality_score?: { score?: string; date?: number } | string;
+  rejected_reason?: string;
+  previous_category?: string;
+  correct_category?: string;
+  sub_category?: string;
+}
+
+export interface CreateTemplateInput {
+  name: string;
+  language: string;
+  category: TemplateCategory;
+  parameterFormat?: 'NAMED' | 'POSITIONAL';
+  components: unknown[];
+}
+
+/** Lê `quality_score` nos dois formatos (objeto da API, string em payloads antigos). */
+export function templateQuality(q: MetaTemplate['quality_score']): string | null {
+  if (!q) return null;
+  return typeof q === 'string' ? q : (q.score ?? null);
+}
 
 /** Tiers de limite de mensagens (§4.6) → número de usuários únicos/24 h; null = ilimitado/sem tier. */
 export function messagingLimitValue(tier: string | undefined | null): number | null {
@@ -209,5 +256,132 @@ export class MetaAssetsApi {
       `/${encodeURIComponent(wabaId)}/subscribed_apps`,
     );
     return res.data.data ?? [];
+  }
+
+  // ---------------------------------------------------------------- registro de número (§10)
+
+  /** §10.1 — cria o número (não verificado) na WABA. `phoneNumber` = número nacional, sem DDI. */
+  async addPhoneNumber(
+    wabaId: string,
+    input: { cc: string; phoneNumber: string; verifiedName: string },
+  ): Promise<{ id: string }> {
+    const res = await this.http.request<{ id: string }>(
+      this.token,
+      'POST',
+      `/${encodeURIComponent(wabaId)}/phone_numbers`,
+      {
+        body: { cc: input.cc, phone_number: input.phoneNumber, verified_name: input.verifiedName },
+      },
+    );
+    return { id: String(res.data.id) };
+  }
+
+  /** §10.2 — pede o código por SMS ou voz (parâmetros em query, como no guia oficial). */
+  async requestCode(
+    phoneNumberId: string,
+    input: { method: 'SMS' | 'VOICE'; language: string },
+  ): Promise<boolean> {
+    const res = await this.http.request<{ success?: boolean }>(
+      this.token,
+      'POST',
+      `/${encodeURIComponent(phoneNumberId)}/request_code`,
+      { query: { code_method: input.method, language: input.language } },
+    );
+    return res.data.success === true;
+  }
+
+  /** §10.3 — confirma o código (só dígitos, sem hífen). */
+  async verifyCode(phoneNumberId: string, code: string): Promise<boolean> {
+    const res = await this.http.request<{ success?: boolean }>(
+      this.token,
+      'POST',
+      `/${encodeURIComponent(phoneNumberId)}/verify_code`,
+      { query: { code: code.replace(/\D/g, '') } },
+    );
+    return res.data.success === true;
+  }
+
+  /** §10.4 — registra na Cloud API. O PIN de 6 dígitos continua obrigatório (mesmo em depreciação). */
+  async registerPhone(
+    phoneNumberId: string,
+    pin: string,
+    dataLocalizationRegion?: string,
+  ): Promise<boolean> {
+    const res = await this.http.request<{ success?: boolean }>(
+      this.token,
+      'POST',
+      `/${encodeURIComponent(phoneNumberId)}/register`,
+      {
+        body: {
+          messaging_product: 'whatsapp',
+          pin,
+          ...(dataLocalizationRegion ? { data_localization_region: dataLocalizationRegion } : {}),
+        },
+      },
+    );
+    return res.data.success === true;
+  }
+
+  /** §10.5 — desregistra (não apaga o número; apagar só pelo WhatsApp Manager). */
+  async deregisterPhone(phoneNumberId: string): Promise<boolean> {
+    const res = await this.http.request<{ success?: boolean }>(
+      this.token,
+      'POST',
+      `/${encodeURIComponent(phoneNumberId)}/deregister`,
+    );
+    return res.data.success === true;
+  }
+
+  // ---------------------------------------------------------------- templates (§11)
+
+  /** §11.1 — cria e submete à revisão. `category` devolvida é a atribuída pela Meta. */
+  async createTemplate(
+    wabaId: string,
+    input: CreateTemplateInput,
+  ): Promise<{ id: string; status?: string; category?: string }> {
+    const res = await this.http.request<{ id: string; status?: string; category?: string }>(
+      this.token,
+      'POST',
+      `/${encodeURIComponent(wabaId)}/message_templates`,
+      {
+        body: {
+          name: input.name,
+          language: input.language,
+          category: input.category,
+          ...(input.parameterFormat ? { parameter_format: input.parameterFormat } : {}),
+          components: input.components,
+        },
+      },
+    );
+    return { ...res.data, id: String(res.data.id) };
+  }
+
+  /** §11.3 — todos os templates da WABA (paginação por cursor, até 50 páginas de 100). */
+  async listTemplates(wabaId: string): Promise<MetaTemplate[]> {
+    const out: MetaTemplate[] = [];
+    let after: string | undefined;
+    for (let page = 0; page < 50; page++) {
+      const res = await this.http.request<Page<MetaTemplate>>(
+        this.token,
+        'GET',
+        `/${encodeURIComponent(wabaId)}/message_templates`,
+        { query: { fields: FIELDS.template.join(','), limit: 100, after } },
+      );
+      out.push(...(res.data.data ?? []));
+      after = res.data.paging?.cursors?.after;
+      if (!res.data.paging?.next || !after) break;
+    }
+    return out;
+  }
+
+  /** §11.4 — apaga UM template (hsm_id + name); só `name` apagaria todos os idiomas. */
+  async deleteTemplate(wabaId: string, input: { name: string; hsmId: string }): Promise<boolean> {
+    const res = await this.http.request<{ success?: boolean }>(
+      this.token,
+      'DELETE',
+      `/${encodeURIComponent(wabaId)}/message_templates`,
+      { query: { hsm_id: input.hsmId, name: input.name } },
+    );
+    return res.data.success === true;
   }
 }
