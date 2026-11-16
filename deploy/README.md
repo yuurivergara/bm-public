@@ -18,8 +18,38 @@ push no master → CI verde → deploy.yml: build da imagem → GHCR (:sha e :st
 | Arquivo                          | Função                                                                                                                                 |
 | -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
 | `deploy/provision.sh`            | Endurecimento idempotente (usuário sem root, SSH só por chave, atualizações automáticas, ufw + DOCKER-USER, swap). Dry-run por padrão. |
-| `deploy/docker-compose.prod.yml` | Pilha lida pela Coolify: `postgres` → `migrate` → `api`. Nenhuma porta publicada.                                                      |
+| `deploy/docker-compose.prod.yml` | Pilha lida pela Coolify: `bm-postgres` → `migrate` → `api`. Nenhuma porta publicada.                                                   |
 | `.github/workflows/deploy.yml`   | Build/push no GHCR e deploy via API da Coolify, com espera do resultado e smoke test.                                                  |
+
+## Estado atual (2026-11-16)
+
+- ✅ VPS BMS endurecida com `provision.sh` (sem `--close-coolify-ports`). O ufw foi ligado com
+  rollback automático armado. Depois de conferir SSH, Vendra, pay, Coolify e a saída dos containers,
+  o rollback foi cancelado.
+- ✅ Staging no ar em **https://bm.179-197-76-7.sslip.io**, pela ponte `deploy/vps-deploy.sh`
+  (pilha em `/opt/bm-platform`, roteada pelo Traefik da Coolify, mesmo padrão de `/opt/vendra`).
+- ⏳ Fluxo GitHub Actions → GHCR → Coolify: depende do push do repositório (com escopo `workflow`) e
+  dos passos 2 e 3 abaixo. Ao migrar para a Coolify, pare a ponte com
+  `docker compose -p bm-platform down` (o volume `bm-platform_bm-pgdata` continua lá).
+
+## Deploy manual (ponte, sem GitHub)
+
+```bash
+deploy/vps-deploy.sh     # build local → docker save | ssh docker load → compose up → smoke test
+```
+
+Os segredos são gerados **na VPS** na primeira execução, em `/opt/bm-platform/.env` (permissão 600).
+Copie `MASTER_KEY` e `PHONE_HASH_PEPPER` para o cofre: `ssh bms-vps cat /opt/bm-platform/.env`.
+Primeiro operador:
+
+```bash
+ssh bms-vps "docker exec -it -e OWNER_EMAIL=... -e OWNER_NAME=... -e OWNER_PASSWORD='...' \
+  bm-platform-api-1 node dist/scripts/create-owner.js"
+```
+
+> ⚠️ Na rede `coolify`, o nome `postgres` é alias do **banco interno da Coolify**. Por isso o
+> serviço se chama `bm-postgres`. Nunca use nomes genéricos (`postgres`, `redis`, `db`) em
+> serviços que entram nessa rede.
 
 ## 1. Endurecer a VPS (uma vez)
 

@@ -11,7 +11,7 @@
 services:
   api:
     image: ghcr.io/yuurivergara/bm-api:${IMAGE_TAG:-staging}
-    pull_policy: always
+    pull_policy: ${PULL_POLICY:-always}
     restart: unless-stopped
     depends_on:
       migrate:
@@ -21,7 +21,7 @@ services:
       - SERVICE_FQDN_API_3000
       - APP_ENV=${APP_ENV:-staging}
       - PORT=3000
-      - DATABASE_URL=postgres://bm_app:${SERVICE_PASSWORD_BMAPP}@postgres:5432/bm
+      - DATABASE_URL=postgres://bm_app:${SERVICE_PASSWORD_BMAPP}@bm-postgres:5432/bm
       - MASTER_KEY=${MASTER_KEY:?defina MASTER_KEY (32 bytes base64) na Coolify}
       - MASTER_KEY_ID=${MASTER_KEY_ID:-master-v1}
       - PHONE_HASH_PEPPER=${PHONE_HASH_PEPPER:?defina PHONE_HASH_PEPPER (32 bytes base64) na Coolify}
@@ -41,17 +41,18 @@ services:
   # Executa as migrations e termina. A API só sobe se ele sair com código 0.
   migrate:
     image: ghcr.io/yuurivergara/bm-api:${IMAGE_TAG:-staging}
-    pull_policy: always
+    pull_policy: ${PULL_POLICY:-always}
     restart: "no" # a Coolify exclui serviços com restart "no" do health check
     command: ["node", "node_modules/@bm/db/dist/cli.js", "migrate"]
     depends_on:
-      postgres:
+      bm-postgres:
         condition: service_healthy
     environment:
-      - DATABASE_ADMIN_URL=postgres://bm_owner:${SERVICE_PASSWORD_POSTGRES}@postgres:5432/bm
+      - DATABASE_ADMIN_URL=postgres://bm_owner:${SERVICE_PASSWORD_POSTGRES}@bm-postgres:5432/bm
       - DATABASE_APP_PASSWORD=${SERVICE_PASSWORD_BMAPP}
 
-  postgres:
+  # Nome único de propósito: na rede "coolify", "postgres" é alias do banco interno da Coolify.
+  bm-postgres:
     # Mesma imagem já presente na VPS BMS (evita download extra).
     image: postgres:16.14-bookworm
     restart: unless-stopped

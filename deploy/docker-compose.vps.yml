@@ -1,0 +1,21 @@
+# Override para rodar a pilha fora da Coolify, direto na VPS (mesmo padrão de /opt/vendra):
+# a API entra na rede "coolify" e o Traefik da Coolify faz HTTPS (Let's Encrypt) pelo domínio.
+# Usado por deploy/vps-deploy.sh enquanto o fluxo GitHub Actions → Coolify não está ativo.
+services:
+  api:
+    networks: [default, coolify]
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=coolify
+      - traefik.http.middlewares.bmapi-https.redirectscheme.scheme=https
+      - traefik.http.routers.bmapi-http.entrypoints=http
+      - traefik.http.routers.bmapi-http.middlewares=bmapi-https
+      - traefik.http.routers.bmapi-http.rule=Host(`${API_HOST:?defina API_HOST}`)
+      - traefik.http.routers.bmapi.entrypoints=https
+      - traefik.http.routers.bmapi.rule=Host(`${API_HOST}`)
+      - traefik.http.routers.bmapi.tls.certresolver=letsencrypt
+      - traefik.http.services.bmapi.loadbalancer.server.port=3000
+
+networks:
+  coolify:
+    external: true
