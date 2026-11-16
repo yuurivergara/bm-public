@@ -1,13 +1,13 @@
 import { createDb, type DbHandle } from '@bm/db';
-import { type KeyProvider, LocalKeyProvider } from '@bm/shared';
+import type { KeyProvider } from '@bm/shared';
 import { Global, Inject, Module, type OnApplicationShutdown } from '@nestjs/common';
-import { APP_CONFIG, type AppConfig } from '../config/config';
+import { APP_CONFIG, type AppConfig, keyProviderFromConfig } from '../config/config';
 import { AuditService } from './audit.service';
 import { DB, KEY_PROVIDER } from './tokens';
 
 /**
  * Provedores de infraestrutura compartilhados: configuração, banco, chaves e auditoria.
- * O KeyProvider da AWS KMS entra na S2 (tokens Meta); em dev/test usamos a chave local.
+ * Chave mestra: MASTER_KEY na VPS (D-16), LOCAL_MASTER_KEY em dev/test; KMS fica para depois.
  */
 @Global()
 @Module({})
@@ -22,10 +22,7 @@ export class CoreModule implements OnApplicationShutdown {
         { provide: DB, useFactory: () => createDb(config.DATABASE_URL) },
         {
           provide: KEY_PROVIDER,
-          useFactory: (): KeyProvider => {
-            if (config.LOCAL_MASTER_KEY) return new LocalKeyProvider(config.LOCAL_MASTER_KEY);
-            throw new Error('KMS KeyProvider ainda não implementado (previsto para S2)');
-          },
+          useFactory: (): KeyProvider => keyProviderFromConfig(config),
         },
         AuditService,
       ],

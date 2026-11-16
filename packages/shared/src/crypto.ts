@@ -32,7 +32,7 @@ export class LocalKeyProvider implements KeyProvider {
 
   constructor(masterKeyBase64: string, keyId = 'local-v1') {
     const key = Buffer.from(masterKeyBase64, 'base64');
-    if (key.length !== 32) throw new Error('LOCAL_MASTER_KEY deve ter 32 bytes em base64');
+    if (key.length !== 32) throw new Error('A chave mestra deve ter 32 bytes em base64');
     this.masterKey = key;
     this.keyId = keyId;
   }

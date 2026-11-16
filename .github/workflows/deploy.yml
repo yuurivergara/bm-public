@@ -1,0 +1,105 @@
+name: Deploy (staging)
+
+# Depois que o CI passa no master: constrói a imagem, publica no GHCR e pede à Coolify para
+# reimplantar o recurso (que puxa a imagem nova com pull_policy: always). Também pode ser
+# disparado manualmente (Actions → Deploy → Run workflow), a partir de qualquer branch.
+#
+# Configuração no GitHub (Settings → Environments → staging):
+#   vars.COOLIFY_URL            ex.: https://coolify.comano.tech
+#   vars.COOLIFY_RESOURCE_UUID  UUID do recurso na Coolify
+#   vars.STAGING_URL            ex.: https://bm.179-197-76-7.sslip.io (smoke test do /readyz)
+#   secrets.COOLIFY_TOKEN       token da API da Coolify com permissão "deploy"
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: staging
+    env:
+      IMAGE: ghcr.io/${{ github.repository_owner }}/bm-api
+      SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SHA }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build e push da imagem
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:${{ env.SHA }}
+            ${{ env.IMAGE }}:staging
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Disparar deploy na Coolify
+        id: trigger
+        env:
+          COOLIFY_URL: ${{ vars.COOLIFY_URL }}
+          COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+          RESOURCE: ${{ vars.COOLIFY_RESOURCE_UUID }}
+        run: |
+          set -euo pipefail
+          # Coolify 4.7.5: POST /api/v1/deploy → {"deployments":[{"resource_uuid","deployment_uuid","message"}]}
+          resp=$(curl -fsS -X POST -H "Authorization: Bearer $COOLIFY_TOKEN" \
+            "$COOLIFY_URL/api/v1/deploy?uuid=$RESOURCE&force=false")
+          echo "$resp" | jq -r '.deployments[] | "\(.resource_uuid): \(.message // "")"'
+          dep=$(echo "$resp" | jq -r '.deployments[0].deployment_uuid // empty')
+          [ -n "$dep" ] || { echo "a Coolify não devolveu deployment_uuid"; exit 1; }
+          echo "deployment=$dep" >> "$GITHUB_OUTPUT"
+
+      - name: Aguardar o fim do deploy
+        env:
+          COOLIFY_URL: ${{ vars.COOLIFY_URL }}
+          COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+          DEP: ${{ steps.trigger.outputs.deployment }}
+        run: |
+          set -euo pipefail
+          for _ in $(seq 1 90); do
+            status=$(curl -fsS -H "Authorization: Bearer $COOLIFY_TOKEN" \
+              "$COOLIFY_URL/api/v1/deployments/$DEP" | jq -r '.status')
+            echo "status: $status"
+            case "$status" in
+              finished) exit 0 ;;
+              failed|cancelled-by-user) echo "deploy terminou com $status (veja os logs na Coolify)"; exit 1 ;;
+            esac
+            sleep 10
+          done
+          echo "tempo esgotado aguardando o deploy"; exit 1
+
+      - name: Smoke test
+        env:
+          STAGING_URL: ${{ vars.STAGING_URL }}
+        run: |
+          for _ in $(seq 1 12); do
+            curl -fsS "$STAGING_URL/readyz" && exit 0
+            sleep 5
+          done
+          echo "readyz não respondeu"; exit 1

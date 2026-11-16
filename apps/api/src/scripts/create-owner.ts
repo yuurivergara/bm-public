@@ -1,24 +1,28 @@
 import 'reflect-metadata';
 import { createDb, orm, users } from '@bm/db';
-import { encryptSecret, LocalKeyProvider } from '@bm/shared';
+import { encryptSecret } from '@bm/shared';
 import { generateTotpSecret, hashPassword, PASSWORD_MIN_LENGTH } from '../auth/crypto';
+import { keyProviderFromConfig, loadConfig } from '../config/config';
 
 /**
  * Cria o primeiro operador (owner). Executa uma única vez por ambiente.
  *   OWNER_EMAIL=... OWNER_NAME=... OWNER_PASSWORD=... pnpm --filter @bm/api create-owner
+ * Em staging/prod, rode dentro do container da API (já tem DATABASE_URL e a chave mestra):
+ *   OWNER_EMAIL=... OWNER_NAME=... OWNER_PASSWORD=... node dist/scripts/create-owner.js
  * O QR code do autenticador é exibido no primeiro login, após a senha.
  */
 async function main() {
-  const { OWNER_EMAIL, OWNER_NAME, OWNER_PASSWORD, DATABASE_URL, LOCAL_MASTER_KEY } = process.env;
-  if (!OWNER_EMAIL || !OWNER_NAME || !OWNER_PASSWORD || !DATABASE_URL) {
-    throw new Error('Defina OWNER_EMAIL, OWNER_NAME, OWNER_PASSWORD e DATABASE_URL');
+  const { OWNER_EMAIL, OWNER_NAME, OWNER_PASSWORD } = process.env;
+  if (!OWNER_EMAIL || !OWNER_NAME || !OWNER_PASSWORD) {
+    throw new Error('Defina OWNER_EMAIL, OWNER_NAME e OWNER_PASSWORD');
   }
   if (OWNER_PASSWORD.length < PASSWORD_MIN_LENGTH) {
     throw new Error(`A senha deve ter pelo menos ${PASSWORD_MIN_LENGTH} caracteres`);
   }
-  if (!LOCAL_MASTER_KEY) throw new Error('LOCAL_MASTER_KEY obrigatória (KMS entra na S2)');
+  const config = loadConfig();
+  const keys = keyProviderFromConfig(config);
 
-  const { db, close } = createDb(DATABASE_URL, { max: 1 });
+  const { db, close } = createDb(config.DATABASE_URL, { max: 1 });
   try {
     const [existing] = await db
       .select({ id: users.id })
@@ -27,10 +31,7 @@ async function main() {
       .limit(1);
     if (existing) throw new Error('Já existe um owner; crie novos operadores pelo painel');
 
-    const totpSecretEnc = await encryptSecret(
-      generateTotpSecret(),
-      new LocalKeyProvider(LOCAL_MASTER_KEY),
-    );
+    const totpSecretEnc = await encryptSecret(generateTotpSecret(), keys);
     const [user] = await db
       .insert(users)
       .values({

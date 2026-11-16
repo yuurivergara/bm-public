@@ -57,16 +57,21 @@ Definição de pronto: lint, typecheck e testes verdes; CI (`.github/workflows/c
 ## Estado atual (ver roadmap §7)
 
 - ✅ S1 Fundação: monorepo, CI, banco com RLS, auth senha+TOTP, sessões, RBAC, auditoria,
-  CRUD de clientes, Dockerfile. 53 testes.
+  CRUD de clientes, Dockerfile. Chave mestra MASTER_KEY (D-16). 61 testes.
 - ⏳ Próximo: **S2** — `packages/meta-client` (cliente Graph API tipado + catálogo de erros),
   **meta-sim** (simulador da Meta para dev/CI), ingestão de webhooks (verificação + assinatura
   `X-Hub-Signature-256` + fila), cadastro de ativos por parceria/manual, sync de limites/qualidade.
-- ⏳ Infra (D-16): provisionamento da VPS por script + deploy via GitHub Actions (SSH, imagens no
-  GHCR), backup contínuo do Postgres para fora da VPS (ex.: Cloudflare R2) com teste de restauração.
+- 🟡 Infra (D-16/D-16a): staging na VPS BMS com Coolify. `deploy/provision.sh`, `deploy/docker-compose.prod.yml`
+  e `.github/workflows/deploy.yml` prontos (runbook em `deploy/README.md`); falta aplicar na VPS e configurar
+  Coolify/GitHub. Pendente antes do piloto: backup contínuo do Postgres fora da VPS + restauração testada,
+  e decidir a VPS de produção (a BMS divide o host com Vendra/Evolution e copy-whats/Baileys).
 
 ## Infra / VPS (D-16)
 
-- MVP e piloto rodam em **VPS** (docker compose de produção), não na AWS.
+- MVP e piloto rodam em **VPS** (docker compose de produção), não na AWS. Staging: VPS BMS (`ssh bms-vps`),
+  via Coolify. O PC do Yuri usa Cloudflare WARP, que a VPS bloqueia: `warp-cli --accept-tos disconnect`.
+- Na VPS BMS a **Vendra** é produção de outro projeto: nunca parar/alterar containers que não sejam da
+  plataforma sem confirmar a lista exata com o Yuri.
 - Condições obrigatórias: backup contínuo **fora** da VPS + restauração testada; Cloudflare na
   frente, firewall, SSH só por chave, atualizações automáticas, Postgres/Redis sem porta pública;
   monitor externo com alerta.

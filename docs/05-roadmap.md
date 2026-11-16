@@ -126,7 +126,9 @@ gantt
 | CRUD de clientes + configurações (RLS) + transições de status | ✅ | CNPJ alfanumérico suportado (vigente desde jul/2026) |
 | Envelope encryption (chave local em dev) | ✅ | KMS na S2 |
 | Dockerfile da API | ✅ | Validado via `pnpm deploy`; build Docker roda no CI |
-| Infra de staging/produção | ⏳ | **D-16:** VPS + script de provisionamento + deploy via GitHub Actions (substitui o Terraform AWS no MVP) |
+| Infra de staging (VPS BMS + Coolify) | 🟡 | `deploy/provision.sh` (testado em container Ubuntu 24.04, aguardando aprovação para rodar na VPS), `deploy/docker-compose.prod.yml` (smoke test local ok), `.github/workflows/deploy.yml` (GHCR + API da Coolify). Falta: aplicar na VPS, configurar Coolify/GitHub (D-16a, `deploy/README.md`) |
+| Chave mestra sem KMS (D-16) | ✅ | `MASTER_KEY`/`MASTER_KEY_ID` em staging/prod; `LOCAL_MASTER_KEY` continua só dev/test |
+| Backup contínuo do Postgres fora da VPS + restauração testada | ⏳ | Obrigatório antes do piloto (D-16) |
 | Painel web (Next.js) — tela de login | ⏳ | Previsto junto com S2/S6 |
 
-**Testes atuais:** 53 (27 shared, 7 banco/RLS, 19 API e2e).
+**Testes atuais:** 61 (27 shared, 7 banco/RLS, 27 API — 19 e2e + 8 de configuração).

@@ -1,0 +1,75 @@
+# Staging/produção na VPS via Coolify (D-16). A Coolify lê este arquivo do repositório
+# (recurso "Docker Compose" com build pack de Git) e o Traefik dela faz HTTPS na frente da API.
+#
+# - Nenhuma porta publicada: Postgres só é acessível pela rede interna deste projeto.
+# - A imagem vem do GHCR (publicada pelo workflow .github/workflows/deploy.yml).
+# - Variáveis SERVICE_* são geradas pela Coolify na 1ª implantação (confirmado na v4.7.5).
+#   MASTER_KEY e PHONE_HASH_PEPPER NÃO são geradas pela Coolify: gere-as você e guarde no cofre de
+#   senhas, porque perdê-las torna irrecuperáveis os tokens Meta e os hashes de telefone.
+# - Rollback: defina IMAGE_TAG=<sha do commit> nas variáveis da Coolify e reimplante.
+
+services:
+  api:
+    image: ghcr.io/yuurivergara/bm-api:${IMAGE_TAG:-staging}
+    pull_policy: always
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      # Domínio gerado pela Coolify, proxiado para a porta 3000. Troque no painel por https://...
+      - SERVICE_FQDN_API_3000
+      - APP_ENV=${APP_ENV:-staging}
+      - PORT=3000
+      - DATABASE_URL=postgres://bm_app:${SERVICE_PASSWORD_BMAPP}@postgres:5432/bm
+      - MASTER_KEY=${MASTER_KEY:?defina MASTER_KEY (32 bytes base64) na Coolify}
+      - MASTER_KEY_ID=${MASTER_KEY_ID:-master-v1}
+      - PHONE_HASH_PEPPER=${PHONE_HASH_PEPPER:?defina PHONE_HASH_PEPPER (32 bytes base64) na Coolify}
+      - SESSION_COOKIE_SECURE=true
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/readyz"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+
+  # Executa as migrations e termina. A API só sobe se ele sair com código 0.
+  migrate:
+    image: ghcr.io/yuurivergara/bm-api:${IMAGE_TAG:-staging}
+    pull_policy: always
+    restart: "no" # a Coolify exclui serviços com restart "no" do health check
+    command: ["node", "node_modules/@bm/db/dist/cli.js", "migrate"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - DATABASE_ADMIN_URL=postgres://bm_owner:${SERVICE_PASSWORD_POSTGRES}@postgres:5432/bm
+      - DATABASE_APP_PASSWORD=${SERVICE_PASSWORD_BMAPP}
+
+  postgres:
+    # Mesma imagem já presente na VPS BMS (evita download extra).
+    image: postgres:16.14-bookworm
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=bm_owner
+      - POSTGRES_PASSWORD=${SERVICE_PASSWORD_POSTGRES}
+      - POSTGRES_DB=bm
+    volumes:
+      - bm-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bm_owner -d bm"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+
+volumes:
+  bm-pgdata:
