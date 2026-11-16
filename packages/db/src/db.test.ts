@@ -18,8 +18,13 @@ afterAll(async () => {
   await tdb?.drop();
 });
 
-/** Tabelas com tenant_id que, por decisão documentada, não usam RLS. */
-const RLS_EXEMPT = new Set(['audit_logs']);
+/**
+ * Tabelas com tenant_id que, por decisão documentada, não usam RLS.
+ * - audit_logs: log do operador, cross-tenant, append-only.
+ * - meta_asset_routes: só identificadores Meta → tenant; o processador de webhooks precisa
+ *   resolver o tenant antes de ter contexto (0002_meta_assets.sql).
+ */
+const RLS_EXEMPT = new Set(['audit_logs', 'meta_asset_routes']);
 
 describe('migrations', () => {
   it('são idempotentes', async () => {
@@ -32,6 +37,13 @@ describe('migrations', () => {
       select c.relname from pg_inherits i join pg_class c on c.oid = i.inhrelid
       where i.inhparent = 'audit_logs'::regclass`;
     expect(rows.length).toBeGreaterThanOrEqual(5);
+  });
+
+  it('cria partições mensais de webhook_events à frente', async () => {
+    const rows = await admin<{ relname: string }[]>`
+      select c.relname from pg_inherits i join pg_class c on c.oid = i.inhrelid
+      where i.inhparent = 'webhook_events'::regclass`;
+    expect(rows.length).toBeGreaterThanOrEqual(4);
   });
 });
 
@@ -84,6 +96,84 @@ describe('isolamento por cliente (RLS)', () => {
         withTenant(db, b.id, (tx) =>
           tx.insert(tenantSettings).values({ tenantId: a.id, wavePolicy: policy }),
         ),
+      ).rejects.toThrow();
+    } finally {
+      await close();
+    }
+  });
+
+  it('ativos Meta de um cliente não são visíveis por outro', async () => {
+    const { db, close } = createDb(tdb.appUrl, { max: 2 });
+    try {
+      const [a] = await db.insert(tenants).values({ name: 'Ativos A' }).returning();
+      const [b] = await db.insert(tenants).values({ name: 'Ativos B' }).returning();
+      if (!a || !b) throw new Error('falha ao criar tenants');
+      await withTenant(db, a.id, async (tx) => {
+        const [p] = await tx
+          .insert(schema.businessPortfolios)
+          .values({ tenantId: a.id, metaBusinessId: `biz-${a.id}` })
+          .returning();
+        if (!p) throw new Error('portfolio');
+        const [w] = await tx
+          .insert(schema.whatsappAccounts)
+          .values({ tenantId: a.id, portfolioId: p.id, metaWabaId: `waba-${a.id}` })
+          .returning();
+        if (!w) throw new Error('waba');
+        await tx.insert(schema.phoneNumbers).values({
+          tenantId: a.id,
+          wabaId: w.id,
+          metaPhoneNumberId: `pn-${a.id}`,
+          phoneE164: '+5511900000001',
+        });
+      });
+      for (const table of [
+        schema.businessPortfolios,
+        schema.whatsappAccounts,
+        schema.phoneNumbers,
+      ]) {
+        expect(await withTenant(db, b.id, (tx) => tx.select().from(table))).toEqual([]);
+        expect(await db.select().from(table)).toEqual([]);
+        expect(await withTenant(db, a.id, (tx) => tx.select().from(table))).toHaveLength(1);
+      }
+    } finally {
+      await close();
+    }
+  });
+
+  it('um número só pode estar ativo em uma WABA por vez (D-13)', async () => {
+    const { db, close } = createDb(tdb.appUrl, { max: 1 });
+    try {
+      const [t] = await db.insert(tenants).values({ name: 'Números' }).returning();
+      if (!t) throw new Error('tenant');
+      await withTenant(db, t.id, async (tx) => {
+        const [p] = await tx
+          .insert(schema.businessPortfolios)
+          .values({ tenantId: t.id, metaBusinessId: `biz-n-${t.id}` })
+          .returning();
+        if (!p) throw new Error('portfolio');
+        const [w] = await tx
+          .insert(schema.whatsappAccounts)
+          .values({ tenantId: t.id, portfolioId: p.id, metaWabaId: `waba-n-${t.id}` })
+          .returning();
+        if (!w) throw new Error('waba');
+        await tx.insert(schema.phoneNumbers).values({
+          tenantId: t.id,
+          wabaId: w.id,
+          metaPhoneNumberId: `pn-n1-${t.id}`,
+          phoneE164: '+5511900000099',
+        });
+      });
+      await expect(
+        withTenant(db, t.id, async (tx) => {
+          const [w] = await tx.select().from(schema.whatsappAccounts).limit(1);
+          if (!w) throw new Error('waba');
+          await tx.insert(schema.phoneNumbers).values({
+            tenantId: t.id,
+            wabaId: w.id,
+            metaPhoneNumberId: `pn-n2-${t.id}`,
+            phoneE164: '+5511900000099',
+          });
+        }),
       ).rejects.toThrow();
     } finally {
       await close();

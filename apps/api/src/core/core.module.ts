@@ -1,9 +1,10 @@
 import { createDb, type DbHandle } from '@bm/db';
+import { MetaClient } from '@bm/meta-client';
 import type { KeyProvider } from '@bm/shared';
 import { Global, Inject, Module, type OnApplicationShutdown } from '@nestjs/common';
 import { APP_CONFIG, type AppConfig, keyProviderFromConfig } from '../config/config';
 import { AuditService } from './audit.service';
-import { DB, KEY_PROVIDER } from './tokens';
+import { DB, KEY_PROVIDER, META_CLIENT } from './tokens';
 
 /**
  * Provedores de infraestrutura compartilhados: configuração, banco, chaves e auditoria.
@@ -24,9 +25,21 @@ export class CoreModule implements OnApplicationShutdown {
           provide: KEY_PROVIDER,
           useFactory: (): KeyProvider => keyProviderFromConfig(config),
         },
+        {
+          provide: META_CLIENT,
+          useFactory: () =>
+            new MetaClient({
+              baseUrl: config.META_GRAPH_BASE_URL,
+              graphVersion: config.META_GRAPH_VERSION,
+              // Sem app secret (só em dev local), chamadas à Meta falham com erro claro da Graph.
+              appSecret: config.META_APP_SECRET ?? 'meta-app-secret-nao-configurado',
+              appId: config.META_APP_ID,
+              timeoutMs: config.META_HTTP_TIMEOUT_MS,
+            }),
+        },
         AuditService,
       ],
-      exports: [APP_CONFIG, DB, KEY_PROVIDER, AuditService],
+      exports: [APP_CONFIG, DB, KEY_PROVIDER, META_CLIENT, AuditService],
     };
   }
 

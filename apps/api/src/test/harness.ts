@@ -9,6 +9,9 @@ import { hashPassword } from '../auth/crypto';
 import { loadConfig } from '../config/config';
 
 export const PASSWORD = 'senha-muito-segura-123';
+export const META_APP_SECRET = 'segredo-do-app-meta-de-teste';
+export const META_VERIFY_TOKEN = 'token-de-verificacao-de-teste';
+export const META_GRAPH_VERSION = 'v99.0';
 
 export interface Harness {
   app: NestFastifyApplication;
@@ -18,10 +21,31 @@ export interface Harness {
     email?: string,
   ) => Promise<{ id: string; email: string; secret: string }>;
   login: (user: { email: string; secret: string }) => Promise<string>;
+  /** Linhas de log capturadas (só com captureLogs). */
+  logs: () => string[];
   close: () => Promise<void>;
 }
 
-export async function createHarness(opts: { authRateLimit?: number } = {}): Promise<Harness> {
+export async function createHarness(
+  opts: { authRateLimit?: number; metaBaseUrl?: string; captureLogs?: boolean } = {},
+): Promise<Harness> {
+  const captured: string[] = [];
+  const restore: (() => void)[] = [];
+  if (opts.captureLogs) {
+    // Captura logs do Fastify (stream) e do Nest/console (stdout/stderr) sem poluir a saída.
+    for (const stream of [process.stdout, process.stderr]) {
+      const original = stream.write.bind(stream);
+      stream.write = ((chunk: unknown, ...rest: unknown[]) => {
+        captured.push(String(chunk));
+        const cb = rest.find((r) => typeof r === 'function') as (() => void) | undefined;
+        cb?.();
+        return true;
+      }) as typeof stream.write;
+      restore.push(() => {
+        stream.write = original;
+      });
+    }
+  }
   const tdb: TestDatabase = await createTestDatabase();
   const masterKey = randomBytes(32).toString('base64');
   const config = loadConfig({
@@ -31,9 +55,17 @@ export async function createHarness(opts: { authRateLimit?: number } = {}): Prom
     PHONE_HASH_PEPPER: randomBytes(32).toString('base64'),
     SESSION_COOKIE_SECURE: 'false',
     AUTH_RATE_LIMIT_PER_MIN: String(opts.authRateLimit ?? 1000),
-    LOG_LEVEL: (process.env.TEST_LOG_LEVEL as 'silent') ?? 'silent',
+    LOG_LEVEL: opts.captureLogs ? 'trace' : ((process.env.TEST_LOG_LEVEL as 'silent') ?? 'silent'),
+    META_APP_SECRET,
+    META_WEBHOOK_VERIFY_TOKEN: META_VERIFY_TOKEN,
+    META_GRAPH_VERSION,
+    META_GRAPH_BASE_URL: opts.metaBaseUrl ?? 'http://127.0.0.1:9',
+    META_HTTP_TIMEOUT_MS: '2000',
+    WEBHOOK_PROCESSOR_ENABLED: 'false',
   });
-  const app = await createApp(config);
+  const app = await createApp(config, {
+    logStream: opts.captureLogs ? { write: (line) => captured.push(line) } : undefined,
+  });
   await app.init();
   await app.getHttpAdapter().getInstance().ready();
 
@@ -87,7 +119,9 @@ export async function createHarness(opts: { authRateLimit?: number } = {}): Prom
     admin,
     createUser,
     login,
+    logs: () => [...captured],
     close: async () => {
+      for (const r of restore) r();
       await app.close();
       await closeDb();
       await admin.end();

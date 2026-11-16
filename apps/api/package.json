@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@bm/db": "workspace:*",
+    "@bm/meta-client": "workspace:*",
     "@bm/shared": "workspace:*",
     "@fastify/cookie": "^11.1.5",
     "@fastify/helmet": "^13.2.0",
@@ -28,6 +29,7 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@bm/meta-sim": "workspace:*",
     "@nestjs/testing": "^11.2.10",
     "@swc-node/register": "^1.12.1",
     "@swc/core": "^1.16.22",

@@ -7,6 +7,8 @@ const key = () => randomBytes(32).toString('base64');
 const base = () => ({
   DATABASE_URL: 'postgres://bm_app:x@localhost:5432/bm',
   PHONE_HASH_PEPPER: key(),
+  META_APP_SECRET: 'segredo-do-app-de-teste',
+  META_WEBHOOK_VERIFY_TOKEN: 'token-de-verificacao-teste',
 });
 
 describe('loadConfig — chave mestra (D-16)', () => {
@@ -67,5 +69,21 @@ describe('keyProviderFromConfig', () => {
   it('falha explicitamente quando só há KMS (ainda não implementado)', () => {
     const cfg = loadConfig({ ...base(), APP_ENV: 'prod', KMS_KEY_ID: 'arn:aws:kms:x' });
     expect(() => keyProviderFromConfig(cfg)).toThrow(/KMS/);
+  });
+});
+
+describe('loadConfig — Meta', () => {
+  it('exige app secret e verify token em staging/prod', () => {
+    const { META_APP_SECRET: _a, META_WEBHOOK_VERIFY_TOKEN: _b, ...rest } = base();
+    expect(() => loadConfig({ ...rest, APP_ENV: 'staging', MASTER_KEY: key() })).toThrow(
+      /META_APP_SECRET/,
+    );
+    expect(() => loadConfig({ ...rest, LOCAL_MASTER_KEY: key() })).not.toThrow();
+  });
+
+  it('valida o formato da versão da Graph API', () => {
+    expect(() =>
+      loadConfig({ ...base(), LOCAL_MASTER_KEY: key(), META_GRAPH_VERSION: '24' }),
+    ).toThrow(/META_GRAPH_VERSION/);
   });
 });

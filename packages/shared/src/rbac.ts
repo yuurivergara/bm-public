@@ -13,6 +13,8 @@ export const PERMISSIONS = {
   'users.manage': ['owner'],
   'audit.read': ['owner'],
   'costs.read': ['owner'],
+  'assets.read': ['owner', 'operator', 'viewer'],
+  'assets.write': ['owner', 'operator'],
   'campaigns.read': ['owner', 'operator', 'viewer'],
   'campaigns.write': ['owner', 'operator'],
   'secrets.manage': ['owner'],

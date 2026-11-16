@@ -29,6 +29,26 @@ const schema = z.object({
   SESSION_ABSOLUTE_HOURS: z.coerce.number().int().positive().default(12),
   AUTH_RATE_LIMIT_PER_MIN: z.coerce.number().int().positive().default(10),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
+
+  // --- Meta (docs/10-meta-referencia.md) ---
+  /** URL base da Graph API; em dev/CI/staging aponta para o meta-sim. */
+  META_GRAPH_BASE_URL: z.string().url().default('https://graph.facebook.com'),
+  META_GRAPH_VERSION: z
+    .string()
+    .regex(/^v\d+\.\d+$/, 'formato vNN.N')
+    .default('v27.0'), // vigente em 2026-11 (docs/10-meta-referencia.md §1)
+  META_APP_ID: z.string().regex(/^\d+$/).optional(),
+  /** Assina appsecret_proof e valida X-Hub-Signature-256. Obrigatório em staging/prod. */
+  META_APP_SECRET: z.string().min(16).optional(),
+  /** Token do desafio de verificação do webhook (hub.verify_token). Obrigatório em staging/prod. */
+  META_WEBHOOK_VERIFY_TOKEN: z.string().min(16).optional(),
+  META_HTTP_TIMEOUT_MS: z.coerce.number().int().positive().default(15_000),
+  /** Liga o processador de webhooks em segundo plano neste processo. */
+  WEBHOOK_PROCESSOR_ENABLED: z
+    .enum(['true', 'false'])
+    .default('true')
+    .transform((v) => v === 'true'),
+  WEBHOOK_PROCESSOR_INTERVAL_MS: z.coerce.number().int().positive().default(2_000),
 });
 
 export type AppConfig = z.infer<typeof schema>;
@@ -56,6 +76,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   }
   if ((cfg.APP_ENV === 'staging' || cfg.APP_ENV === 'prod') && !cfg.SESSION_COOKIE_SECURE) {
     throw new Error('SESSION_COOKIE_SECURE deve ser true em staging/prod');
+  }
+  if (
+    (cfg.APP_ENV === 'staging' || cfg.APP_ENV === 'prod') &&
+    (!cfg.META_APP_SECRET || !cfg.META_WEBHOOK_VERIFY_TOKEN)
+  ) {
+    throw new Error('META_APP_SECRET e META_WEBHOOK_VERIFY_TOKEN são obrigatórios em staging/prod');
   }
   return cfg;
 }
