@@ -6,6 +6,7 @@ import { authenticator } from 'otplib';
 import postgres from 'postgres';
 import { createApp } from '../app';
 import { hashPassword } from '../auth/crypto';
+import type { AppConfig } from '../config/config';
 import { loadConfig } from '../config/config';
 
 export const PASSWORD = 'senha-muito-segura-123';
@@ -15,6 +16,7 @@ export const META_GRAPH_VERSION = 'v99.0';
 
 export interface Harness {
   app: NestFastifyApplication;
+  config: AppConfig;
   admin: postgres.Sql;
   createUser: (
     role: Role,
@@ -27,7 +29,13 @@ export interface Harness {
 }
 
 export async function createHarness(
-  opts: { authRateLimit?: number; metaBaseUrl?: string; captureLogs?: boolean } = {},
+  opts: {
+    authRateLimit?: number;
+    metaBaseUrl?: string;
+    captureLogs?: boolean;
+    /** Variáveis extras de configuração (ex.: IMPORT_MAX_BYTES). */
+    env?: Record<string, string>;
+  } = {},
 ): Promise<Harness> {
   const captured: string[] = [];
   const restore: (() => void)[] = [];
@@ -62,6 +70,8 @@ export async function createHarness(
     META_GRAPH_BASE_URL: opts.metaBaseUrl ?? 'http://127.0.0.1:9',
     META_HTTP_TIMEOUT_MS: '2000',
     WEBHOOK_PROCESSOR_ENABLED: 'false',
+    IMPORT_PROCESSOR_ENABLED: 'false',
+    ...opts.env,
   });
   const app = await createApp(config, {
     logStream: opts.captureLogs ? { write: (line) => captured.push(line) } : undefined,
@@ -116,6 +126,7 @@ export async function createHarness(
 
   return {
     app,
+    config,
     admin,
     createUser,
     login,

@@ -1,3 +1,5 @@
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { type KeyProvider, LocalKeyProvider } from '@bm/shared';
 import { z } from 'zod';
 
@@ -49,6 +51,21 @@ const schema = z.object({
     .default('true')
     .transform((v) => v === 'true'),
   WEBHOOK_PROCESSOR_INTERVAL_MS: z.coerce.number().int().positive().default(2_000),
+  /** Pasta dos arquivos de importação enquanto são analisados (apagados depois). */
+  IMPORT_DIR: z.string().default(join(tmpdir(), 'bm-imports')),
+  /** Tamanho máximo do arquivo de contatos (1M linhas de CSV cabem com folga em 200 MB). */
+  IMPORT_MAX_BYTES: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(200 * 1024 * 1024),
+  IMPORT_MAX_ROWS: z.coerce.number().int().positive().default(1_000_000),
+  /** Liga o processador de importações em segundo plano neste processo. */
+  IMPORT_PROCESSOR_ENABLED: z
+    .enum(['true', 'false'])
+    .default('true')
+    .transform((v) => v === 'true'),
+  IMPORT_PROCESSOR_INTERVAL_MS: z.coerce.number().int().positive().default(2_000),
   /** Quarentena de número liberado antes do reuso (FR-NUM-05). */
   NUMBER_QUARANTINE_DAYS: z.coerce.number().int().min(0).max(3650).default(90),
 });

@@ -117,6 +117,23 @@ export function hashPhone(e164: string, pepperBase64: string, tenantId: string):
   return createHmac('sha256', key).update(e164).digest();
 }
 
+/**
+ * Igual a `hashPhone`, mas deriva a chave do cliente uma única vez: para importações grandes
+ * (1M linhas) a derivação HKDF por linha custaria mais que o HMAC.
+ */
+export function phoneHasher(pepperBase64: string, tenantId: string): (e164: string) => Buffer {
+  const key = Buffer.from(
+    hkdfSync(
+      'sha256',
+      Buffer.from(pepperBase64, 'base64'),
+      Buffer.from(tenantId),
+      'phone-hash',
+      32,
+    ),
+  );
+  return (e164) => createHmac('sha256', key).update(e164).digest();
+}
+
 /** Token aleatório (url-safe) e seu hash SHA-256 para armazenamento. */
 export function generateToken(bytes = 32): { token: string; hash: Buffer } {
   const token = randomBytes(bytes).toString('base64url');

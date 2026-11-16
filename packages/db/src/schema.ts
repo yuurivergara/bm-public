@@ -8,6 +8,7 @@ import {
   numeric,
   pgEnum,
   pgTable,
+  primaryKey,
   smallint,
   text,
   timestamp,
@@ -372,6 +373,180 @@ export const messageTemplates = pgTable(
   (t) => [unique('message_templates_waba_id_name_language_key').on(t.wabaId, t.name, t.language)],
 );
 
+// ---------------------------------------------------------------------------- S4 contatos
+
+export type ImportStatus =
+  | 'uploaded'
+  | 'parsing'
+  | 'preview'
+  | 'confirming'
+  | 'confirmed'
+  | 'failed'
+  | 'cancelled';
+
+export interface ImportMapping {
+  /** Coluna do telefone: nome do cabeçalho ou índice (1 = primeira). */
+  phone: string | number;
+  name?: string | number;
+  /** Variável do template → coluna. */
+  attributes?: Record<string, string | number>;
+  hasHeader: boolean;
+  delimiter?: string;
+}
+
+export const contactImports = pgTable('contact_imports', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id')
+    .notNull()
+    .references(() => tenants.id, { onDelete: 'cascade' }),
+  originalFilename: text('original_filename').notNull(),
+  fileFormat: text('file_format').$type<'csv' | 'txt' | 'xlsx'>().notNull(),
+  fileSize: bigint('file_size', { mode: 'number' }).notNull(),
+  fileSha256: bytea('file_sha256').notNull(),
+  status: text('status').$type<ImportStatus>().notNull().default('uploaded'),
+  mapping: jsonb('mapping').$type<ImportMapping>().notNull(),
+  listName: text('list_name').notNull(),
+  rowCount: integer('row_count'),
+  validCount: integer('valid_count'),
+  invalidCount: integer('invalid_count'),
+  duplicateCount: integer('duplicate_count'),
+  suppressedCount: integer('suppressed_count'),
+  existingCount: integer('existing_count'),
+  errorSample: jsonb('error_sample').$type<{ row: number; reason: string }[]>(),
+  error: text('error'),
+  originDeclaration: text('origin_declaration').notNull(),
+  legalBasis: text('legal_basis').notNull(),
+  declarationNotes: text('declaration_notes'),
+  declaredBy: uuid('declared_by')
+    .notNull()
+    .references(() => users.id),
+  declaredAt: ts('declared_at').notNull(),
+  listId: uuid('list_id'),
+  createdAt: ts('created_at').notNull().defaultNow(),
+  updatedAt: ts('updated_at').notNull().defaultNow(),
+  finishedAt: ts('finished_at'),
+});
+
+/** Fila do processador de importações (sem RLS: só IDs; ver migration 0004). */
+export const contactImportJobs = pgTable('contact_import_jobs', {
+  importId: uuid('import_id')
+    .primaryKey()
+    .references(() => contactImports.id, { onDelete: 'cascade' }),
+  tenantId: uuid('tenant_id')
+    .notNull()
+    .references(() => tenants.id, { onDelete: 'cascade' }),
+  kind: text('kind').$type<'parse' | 'confirm'>().notNull(),
+  attempts: integer('attempts').notNull().default(0),
+  availableAt: ts('available_at').notNull().defaultNow(),
+  leaseUntil: ts('lease_until'),
+  lastError: text('last_error'),
+});
+
+export const contactImportRows = pgTable(
+  'contact_import_rows',
+  {
+    importId: uuid('import_id')
+      .notNull()
+      .references(() => contactImports.id, { onDelete: 'cascade' }),
+    tenantId: uuid('tenant_id').notNull(),
+    rowNo: integer('row_no').notNull(),
+    phoneE164: text('phone_e164'),
+    phoneHash: bytea('phone_hash'),
+    name: text('name'),
+    attributes: jsonb('attributes').notNull().default({}),
+    status: text('status').$type<'valid' | 'invalid' | 'duplicate' | 'suppressed'>().notNull(),
+    reason: text('reason'),
+  },
+  (t) => [primaryKey({ columns: [t.importId, t.rowNo] })],
+);
+
+export const contacts = pgTable(
+  'contacts',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    phoneE164: text('phone_e164').notNull(),
+    phoneHash: bytea('phone_hash').notNull(),
+    name: text('name'),
+    attributes: jsonb('attributes').$type<Record<string, string>>().notNull().default({}),
+    firstImportId: uuid('first_import_id').references(() => contactImports.id, {
+      onDelete: 'set null',
+    }),
+    invalidAt: ts('invalid_at'),
+    createdAt: ts('created_at').notNull().defaultNow(),
+    updatedAt: ts('updated_at').notNull().defaultNow(),
+  },
+  (t) => [unique('contacts_tenant_id_phone_e164_key').on(t.tenantId, t.phoneE164)],
+);
+
+export const contactLists = pgTable('contact_lists', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id')
+    .notNull()
+    .references(() => tenants.id, { onDelete: 'cascade' }),
+  importId: uuid('import_id')
+    .unique()
+    .references(() => contactImports.id, { onDelete: 'set null' }),
+  name: text('name').notNull(),
+  size: integer('size').notNull().default(0),
+  createdBy: uuid('created_by').references(() => users.id),
+  createdAt: ts('created_at').notNull().defaultNow(),
+});
+
+export const contactListMembers = pgTable(
+  'contact_list_members',
+  {
+    listId: uuid('list_id')
+      .notNull()
+      .references(() => contactLists.id, { onDelete: 'cascade' }),
+    contactId: uuid('contact_id')
+      .notNull()
+      .references(() => contacts.id, { onDelete: 'cascade' }),
+    tenantId: uuid('tenant_id').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.listId, t.contactId] })],
+);
+
+export const consentRecords = pgTable('consent_records', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id')
+    .notNull()
+    .references(() => tenants.id, { onDelete: 'cascade' }),
+  contactId: uuid('contact_id')
+    .notNull()
+    .references(() => contacts.id, { onDelete: 'cascade' }),
+  basis: text('basis').notNull(),
+  source: text('source').$type<'import_declaration' | 'opt_in_reply' | 'manual'>().notNull(),
+  importId: uuid('import_id').references(() => contactImports.id, { onDelete: 'set null' }),
+  evidence: jsonb('evidence'),
+  recordedAt: ts('recorded_at').notNull().defaultNow(),
+});
+
+export type SuppressionReason =
+  | 'opt_out_keyword'
+  | 'opt_out_button'
+  | 'manual'
+  | 'complaint'
+  | 'invalid';
+
+export const suppressions = pgTable(
+  'suppressions',
+  {
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    phoneHash: bytea('phone_hash').notNull(),
+    phoneMasked: text('phone_masked').notNull(),
+    reason: text('reason').$type<SuppressionReason>().notNull(),
+    sourceMessageId: uuid('source_message_id'),
+    createdBy: uuid('created_by').references(() => users.id),
+    createdAt: ts('created_at').notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.tenantId, t.phoneHash] })],
+);
+
 export const schema = {
   users,
   userSessions,
@@ -390,4 +565,12 @@ export const schema = {
   numberInventory,
   numberAssignments,
   messageTemplates,
+  contactImports,
+  contactImportJobs,
+  contactImportRows,
+  contacts,
+  contactLists,
+  contactListMembers,
+  consentRecords,
+  suppressions,
 };

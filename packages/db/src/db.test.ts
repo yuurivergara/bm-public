@@ -24,7 +24,8 @@ afterAll(async () => {
  * - meta_asset_routes: só identificadores Meta → tenant; o processador de webhooks precisa
  *   resolver o tenant antes de ter contexto (0002_meta_assets.sql).
  */
-const RLS_EXEMPT = new Set(['audit_logs', 'meta_asset_routes']);
+// contact_import_jobs: fila do worker, só IDs (migration 0004).
+const RLS_EXEMPT = new Set(['audit_logs', 'meta_asset_routes', 'contact_import_jobs']);
 
 describe('migrations', () => {
   it('são idempotentes', async () => {

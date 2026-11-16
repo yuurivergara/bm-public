@@ -1,4 +1,4 @@
-<title>Produção e copy-whats</title>
+<title>Produção, backup e monitor</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -105,10 +105,10 @@ textarea{font:inherit; font-size:14px; color:var(--ink); background:var(--bg); b
 {
  "meta": {
   "slug": "bm-infra-producao-v1",
-  "titulo": "Produção e copy-whats",
+  "titulo": "Produção, backup e monitor",
   "eyebrow": "BM pública · infra · 16/11/2026",
-  "resumo": "Duas decisões de infraestrutura antes do piloto. Marque uma opção em cada uma (e uma nota, se quiser); o Musk lê as escolhas daqui.",
-  "fontes": "Preços Hostinger KVM 2 em agregadores e guias de nov/2026 (horadecodar.com.br, valebyte.com, vpsbenchmarks.com) — estimativas, conferir no site da Hostinger antes de contratar. AWS: estimativa de docs/06-custos.md §4. Atividade do copy-whats: logs do container na VPS BMS (1.416 linhas em 7 dias, último em 16/11 às 03:53)."
+  "resumo": "Quatro decisões de infraestrutura antes do piloto. Marque uma opção em cada uma (e uma nota, se quiser); o Musk lê as escolhas daqui.",
+  "fontes": "Preços Hostinger KVM 2 em agregadores e guias de nov/2026 (horadecodar.com.br, valebyte.com, vpsbenchmarks.com) — estimativas, conferir no site da Hostinger antes de contratar. AWS: estimativa de docs/06-custos.md §4. Atividade do copy-whats: logs do container na VPS BMS (1.416 linhas em 7 dias, último em 16/11 às 03:53). Backup/monitor (nov/2026): R2 em developers.cloudflare.com/r2/pricing (10 GB-mês grátis, egress grátis, US$ 0,015/GB-mês depois; não confirmei se pede cartão); B2 em backblaze.com/cloud-storage/pricing (10 GB grátis, US$ 6,95/TB-mês); healthchecks.io/pricing (Hobbyist grátis, 20 checks — número de agregadores); UptimeRobot (grátis: 50 monitores a cada 5 min segundo agregadores; uso comercial no plano grátis com informação conflitante — conferir os termos)."
  },
  "blocos": [
   {
@@ -116,7 +116,8 @@ textarea{font:inherit; font-size:14px; color:var(--ink); background:var(--bg); b
    "itens": [
     "Staging fica na VPS BMS (D-16a), com meta-sim e sem token de cliente real.",
     "Deploy automático por GitHub Actions → GHCR → SSH com comando forçado (D-16b); a Coolify fica só como proxy/TLS.",
-    "A plataforma oficial não divide servidor de produção com Evolution/Baileys (D-16)."
+    "A plataforma oficial não divide servidor de produção com Evolution/Baileys (D-16).",
+    "Backup contínuo com WAL-G já roda no staging (WAL cifrado a cada ≤ 5 min, base diária, restauração testada toda semana e no CI). Falta só o destino fora da VPS."
    ]
   },
   {
@@ -227,6 +228,114 @@ textarea{font:inherit; font-size:14px; color:var(--ink); background:var(--bg); b
       }
      ],
      "recomendacao": "Manter: com produção em VPS própria, o copy-whats só limita o staging, e basta testar a Meta real com um app de teste separado."
+    }
+   ]
+  },
+  {
+   "titulo": "Backup e monitoramento",
+   "decisoes": [
+    {
+     "id": "destino-backup",
+     "pergunta": "Para onde vão os backups do banco, fora da VPS?",
+     "contexto": "Hoje os backups ficam num volume da própria VPS: protegem contra erro humano e corrupção, mas não contra perder o servidor. D-16 exige cópia fora. Os arquivos já saem cifrados; o destino só guarda dados ilegíveis. Trocar é configurar 6 variáveis no .env (deploy/README.md, seção Backup).",
+     "opcoes": [
+      {
+       "id": "r2",
+       "nome": "Cloudflare R2",
+       "rec": true,
+       "resumo": "Bucket S3 compatível na Cloudflare, que já vai ficar na frente do domínio.",
+       "pros": [
+        "10 GB-mês grátis, mais que suficiente no piloto",
+        "Sem custo de download (restauração grátis)",
+        "Mesmo fornecedor do proxy/DNS planejado: uma conta a menos"
+       ],
+       "contras": [
+        "Não confirmei se o cadastro exige cartão",
+        "Você precisa criar o bucket e um token só com acesso a ele"
+       ],
+       "custo": "US$ 0 até 10 GB; depois US$ 0,015/GB-mês"
+      },
+      {
+       "id": "b2",
+       "nome": "Backblaze B2",
+       "resumo": "Armazenamento S3 compatível barato e conhecido para backup.",
+       "pros": [
+        "10 GB grátis",
+        "US$ 6,95/TB-mês depois",
+        "Download grátis até 3× o armazenado"
+       ],
+       "contras": [
+        "Mais uma conta/fornecedor",
+        "Latência maior (datacenters nos EUA/Europa)"
+       ],
+       "custo": "US$ 0 até 10 GB; depois US$ 6,95/TB-mês"
+      },
+      {
+       "id": "games-vps",
+       "nome": "Máquina de games (Regxa)",
+       "resumo": "Usar o disco da sua outra VPS como destino via SSH.",
+       "pros": [
+        "Sem custo novo",
+        "Sem conta nova"
+       ],
+       "contras": [
+        "Mistura um servidor de jogos com dados de clientes",
+        "Se as duas VPS caírem juntas (mesmo problema de conta/cartão), perde tudo",
+        "Fui bloqueado ao acessar essa máquina: você teria que liberar"
+       ],
+       "custo": "R$ 0"
+      }
+     ],
+     "recomendacao": "R2: grátis no tamanho atual, restauração sem custo de download e mesma conta Cloudflare que você vai precisar para o domínio. Se o R2 pedir cartão e você não quiser, B2."
+    },
+    {
+     "id": "monitor-externo",
+     "pergunta": "Qual monitor externo avisa quando a plataforma ou o backup param?",
+     "contexto": "D-16 exige monitor de fora com alerta. Dois sinais: a API respondendo (/readyz) e o backup rodando (o serviço bm-backup já manda ping para uma URL quando configurada, e /fail quando falha).",
+     "opcoes": [
+      {
+       "id": "hc-uptimerobot",
+       "nome": "healthchecks.io + UptimeRobot",
+       "rec": true,
+       "resumo": "healthchecks.io recebe o ping do backup; UptimeRobot consulta /readyz a cada 5 min. Alertas por e-mail/Telegram.",
+       "pros": [
+        "Os dois têm plano grátis",
+        "Cobre os dois sinais (backup e API)",
+        "Alerta chega no celular"
+       ],
+       "contras": [
+        "Duas contas",
+        "Plano grátis do UptimeRobot: uso comercial com informação conflitante, conferir os termos"
+       ],
+       "custo": "US$ 0"
+      },
+      {
+       "id": "so-healthchecks",
+       "nome": "Só healthchecks.io",
+       "resumo": "Backup por ping e a API por um ping periódico mandado da própria VPS.",
+       "pros": [
+        "Uma conta só",
+        "Grátis (20 checks)"
+       ],
+       "contras": [
+        "Se a VPS cair inteira, o aviso vem pela ausência do ping (ok), mas não testa o caminho público (Traefik/HTTPS)"
+       ],
+       "custo": "US$ 0"
+      },
+      {
+       "id": "depois",
+       "nome": "Deixar para o piloto",
+       "resumo": "Ligar o monitor só quando o primeiro cliente real entrar.",
+       "pros": [
+        "Nada a fazer agora"
+       ],
+       "contras": [
+        "Staging sem alerta: falha de backup passa despercebida"
+       ],
+       "custo": "US$ 0"
+      }
+     ],
+     "recomendacao": "healthchecks.io + UptimeRobot: grátis, cobre backup e API pelo caminho público, e você recebe o alerta no celular. Depois de criar, me passe as URLs (não são segredos sensíveis) que eu configuro."
     }
    ]
   }
