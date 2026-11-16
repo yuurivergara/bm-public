@@ -126,7 +126,7 @@ gantt
 | CRUD de clientes + configurações (RLS) + transições de status | ✅ | CNPJ alfanumérico suportado (vigente desde jul/2026) |
 | Envelope encryption (chave local em dev) | ✅ | Sem KMS no MVP: `MASTER_KEY` (D-16) |
 | Dockerfile da API | ✅ | Validado via `pnpm deploy`; build Docker roda no CI |
-| Infra de staging (VPS BMS) | ✅ | VPS endurecida (`deploy/provision.sh`). Staging em https://bm.179-197-76-7.sslip.io. Deploy oficial (D-16b): GitHub Actions → GHCR → SSH com comando forçado (`deploy/bm-deploy.sh`); ponte manual `deploy/vps-deploy.sh`. Falta só o push com escopo `workflow` para ativar o Actions |
+| Infra de staging (VPS BMS) | ✅ | VPS endurecida (`deploy/provision.sh`). Staging em https://bm.179-197-76-7.sslip.io. Deploy oficial (D-16b): GitHub Actions → GHCR → SSH com comando forçado (`deploy/bm-deploy.sh`) (ativo desde o merge do PR #1); ponte manual `deploy/vps-deploy.sh` |
 | Chave mestra sem KMS (D-16) | ✅ | `MASTER_KEY`/`MASTER_KEY_ID` em staging/prod; `LOCAL_MASTER_KEY` continua só dev/test |
 | Backup contínuo do Postgres fora da VPS + restauração testada | ⏳ | Obrigatório antes do piloto (D-16) |
 | Painel web (Next.js) — tela de login | ⏳ | Previsto junto com S2/S6 |
