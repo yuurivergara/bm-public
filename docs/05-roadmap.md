@@ -126,7 +126,7 @@ gantt
 | CRUD de clientes + configurações (RLS) + transições de status | ✅ | CNPJ alfanumérico suportado (vigente desde jul/2026) |
 | Envelope encryption (chave local em dev) | ✅ | KMS na S2 |
 | Dockerfile da API | ✅ | Validado via `pnpm deploy`; build Docker roda no CI |
-| Terraform base de staging | ⏳ | Próximo item |
+| Infra de staging/produção | ⏳ | **D-16:** VPS + script de provisionamento + deploy via GitHub Actions (substitui o Terraform AWS no MVP) |
 | Painel web (Next.js) — tela de login | ⏳ | Previsto junto com S2/S6 |
 
 **Testes atuais:** 53 (27 shared, 7 banco/RLS, 19 API e2e).
