@@ -17,19 +17,21 @@ push no master → CI verde → deploy.yml: build das imagens (API + meta-sim) �
 
 ## Arquivos
 
-| Arquivo                                             | Função                                                                                                                                                     |
-| --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `deploy/provision.sh`                               | Endurecimento idempotente (usuário sem root, SSH só por chave, atualizações automáticas, ufw + DOCKER-USER, swap). Dry-run por padrão.                     |
-| `deploy/docker-compose.prod.yml`                    | Pilha: `bm-postgres` (+ `bm-backup`) → `migrate` → `api`. Nenhuma porta publicada.                                                                         |
-| `deploy/docker-compose.vps.yml`                     | Rede `coolify` + labels do Traefik (domínio `API_HOST`).                                                                                                   |
-| `deploy/docker-compose.sim.yml`                     | Staging: sobe o **meta-sim** (sem porta publicada) e aponta `META_GRAPH_BASE_URL` para ele.                                                                |
-| `deploy/bm-deploy.sh`                               | Script do lado da VPS (`/usr/local/sbin/bm-deploy`): implanta uma tag, fixa `IMAGE_TAG` no `.env`, smoke test. Os composes vêm de dentro da imagem da API. |
-| `deploy/vps-deploy.sh`                              | Ponte manual do PC: build local → `docker load` na VPS → instala o `bm-deploy` → implanta.                                                                 |
-| `deploy/staging-e2e.sh`                             | Teste ponta a ponta no staging: login+TOTP → webhook (verificação/assinatura) → cadastro de ativos → webhook do sim → sync.                                |
-| `deploy/staging-lib.sh` / `staging-add-operator.sh` | Login de serviço (senha + TOTP) e criação de operadores pela API.                                                                                          |
-| `deploy/set-meta-app.sh`                            | Troca o simulador pelo app real da Meta (pede o app secret sem eco e grava só na VPS).                                                                     |
-| `deploy/postgres/`                                  | Imagem `bm-postgres` (Postgres + WAL-G), scripts `bm-backup`/`bm-wal-archive`, `tag.sh` e o teste `test-backup.sh`.                                        |
-| `.github/workflows/deploy.yml`                      | Caminho normal: build/push no GHCR e deploy por SSH, com smoke test.                                                                                       |
+| Arquivo                                             | Função                                                                                                                                                                                  |
+| --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `deploy/provision.sh`                               | Endurecimento idempotente (usuário sem root, SSH só por chave, atualizações automáticas, ufw + DOCKER-USER, swap). Dry-run por padrão.                                                  |
+| `deploy/docker-compose.prod.yml`                    | Pilha: `bm-postgres` (+ `bm-backup`) → `migrate` → `api`. Nenhuma porta publicada.                                                                                                      |
+| `deploy/docker-compose.vps.yml`                     | Rede `coolify` + labels do Traefik (domínio `API_HOST`).                                                                                                                                |
+| `deploy/docker-compose.sim.yml`                     | Staging: sobe o **meta-sim** (sem porta publicada) e aponta `META_GRAPH_BASE_URL` para ele.                                                                                             |
+| `deploy/bm-deploy.sh`                               | Script do lado da VPS (`/usr/local/sbin/bm-deploy`): implanta uma tag, fixa `IMAGE_TAG` no `.env`, smoke test. Os composes vêm de dentro da imagem da API.                              |
+| `deploy/vps-deploy.sh`                              | Ponte manual do PC: build local → `docker load` na VPS → instala o `bm-deploy` → implanta.                                                                                              |
+| `deploy/staging-e2e.sh`                             | Teste ponta a ponta no staging: login+TOTP → webhook (verificação/assinatura) → cadastro de ativos → webhook do sim → sync.                                                             |
+| `deploy/set-backup-r2.sh`                           | Liga o backup no Cloudflare R2 (pede Account ID, bucket e chaves sem eco; grava só no `.env` da VPS), opcionalmente o ping do healthchecks.io, reimplanta e confere base + restauração. |
+| `deploy/staging-import-load.sh`                     | Teste de carga do S4: CSV sintético de 1M linhas → prévia → confirmação, mede e limpa.                                                                                                  |
+| `deploy/staging-lib.sh` / `staging-add-operator.sh` | Login de serviço (senha + TOTP) e criação de operadores pela API.                                                                                                                       |
+| `deploy/set-meta-app.sh`                            | Troca o simulador pelo app real da Meta (pede o app secret sem eco e grava só na VPS).                                                                                                  |
+| `deploy/postgres/`                                  | Imagem `bm-postgres` (Postgres + WAL-G), scripts `bm-backup`/`bm-wal-archive`, `tag.sh` e o teste `test-backup.sh`.                                                                     |
+| `.github/workflows/deploy.yml`                      | Caminho normal: build/push no GHCR e deploy por SSH, com smoke test.                                                                                                                    |
 
 ## Estado atual (2026-11-16)
 

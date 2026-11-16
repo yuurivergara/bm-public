@@ -89,10 +89,16 @@ echo "TOTAL: ${TOTAL} s para $ROWS linhas (upload $((T1 - T0)) s · prévia $((T
 
 if [[ "$KEEP" != --keep ]]; then
   echo "== limpeza (contatos do cliente de carga)"
-  ssh "$HOST" "docker exec bm-platform-bm-postgres-1 psql -U bm_owner -d bm -qAt -c \"
-    delete from contact_lists where tenant_id = '$TENANT';
-    delete from contacts where tenant_id = '$TENANT';
-    vacuum analyze contacts, contact_list_members, consent_records;\""
+  # roda destacado no container: apagar ~1M linhas leva minutos e a sessão SSH pode cair no meio
+  ssh "$HOST" "docker exec -d bm-platform-bm-postgres-1 sh -c \"psql -U bm_owner -d bm -qAt \
+    -c \\\"delete from contact_lists where tenant_id = '$TENANT'; delete from contacts where tenant_id = '$TENANT';\\\" \
+    -c 'vacuum analyze contacts, contact_list_members, consent_records' > /tmp/bm-load-cleanup.log 2>&1\""
+  for _ in $(seq 1 120); do
+    n="$(ssh "$HOST" "docker exec bm-platform-bm-postgres-1 psql -U bm_owner -d bm -qAt -c \"select count(*) from contacts where tenant_id = '$TENANT'\"")"
+    [[ "$n" == 0 ]] && break
+    sleep 5
+  done
+  [[ "$n" == 0 ]] || fail "limpeza não terminou (restam $n contatos)"
   ok "removidos"
 fi
 echo "CARGA OK"

@@ -65,14 +65,18 @@ Definição de pronto: lint, typecheck e testes verdes; CI (`.github/workflows/c
 - ✅ S3 Números + templates: estoque (provedor manual), registro na WABA (request/verify/register, PIN cifrado),
   liberação com quarentena, templates por cliente (criar/sync/excluir) e webhooks de template. Migration 0003.
   147 testes. Staging e2e cobre registro + aprovação via webhook (meta-sim). Falta validar com número/app reais.
-- ⏳ Próximo: **S4 Contatos** (upload CSV/XLSX/TXT, E.164 com nono dígito, dedupe, supressão, listas); depois S5 envio.
+- ✅ S4 Contatos: importação CSV/XLSX/TXT com prévia (fila `contact_import_jobs`, COPY numa temporária porque
+  COPY não funciona com RLS), declaração de origem → `consent_records`, listas, supressão permanente por hash.
+  Migrations 0004–0005 (0005: índices de FK; teste exige índice em toda FK). 157 testes. Carga no staging: 1M linhas em 194 s (`deploy/staging-import-load.sh`).
+- ⏳ Próximo: **S5 Envio + capacidade**.
 - 🟡 Infra (D-16/D-16a/D-16b): staging no ar em https://bm.179-197-76-7.sslip.io (VPS BMS, `/opt/bm-platform`,
   projeto compose `bm-platform`, com meta-sim). Deploy oficial: Actions → GHCR → `ssh deploy@… "deploy <sha>"`
   (comando forçado `deploy/bm-deploy.sh`); ponte manual `deploy/vps-deploy.sh`; teste ponta a ponta
   `deploy/staging-e2e.sh`; app real da Meta: `deploy/set-meta-app.sh`. Merge no master dispara o deploy (ativo desde o PR #1).
   Backup: WAL-G (`deploy/postgres/`, serviço `bm-backup`) com restauração testada; destino ainda local.
-  Pendente antes do piloto: destino do backup fora da VPS (R2/B2) + monitor externo, e decidir a VPS de
-  produção (página `decisoes/2026-11-16-infra-producao.html`).
+  Decidido em 16/11 (`decisoes/2026-11-16-infra-producao.html`): produção na própria VPS BMS, com Vendra, bms e
+  copy-whats **parados (sem remover)**; backup no **Cloudflare R2** (`deploy/set-backup-r2.sh`, pede as chaves
+  sem eco); monitor **healthchecks.io** (ping do backup) + **UptimeRobot** (`/readyz`).
 
 ## Infra / VPS (D-16)
 

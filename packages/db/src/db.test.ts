@@ -212,3 +212,43 @@ describe('drift entre schema Drizzle e banco', () => {
     expect(missing).toEqual([]);
   });
 });
+
+/**
+ * FKs com ON DELETE CASCADE/SET NULL fazem o Postgres procurar as linhas filhas pela coluna da FK.
+ * Sem um índice que comece por ela, cada linha apagada no pai vira uma varredura completa do filho
+ * (apagar 1M contatos levou horas no staging por causa de consent_records). Exceções: FKs para
+ * tabelas pequenas/raramente apagadas, listadas aqui com o motivo.
+ */
+const FK_INDEX_EXEMPT = new Set<string>([
+  // usuários são desativados, não apagados
+  'contact_imports.contact_imports_declared_by_fkey',
+  'contact_lists.contact_lists_created_by_fkey',
+  'message_templates.message_templates_created_by_fkey',
+  'number_assignments.number_assignments_assigned_by_fkey',
+  'suppressions.suppressions_created_by_fkey',
+  // tabelas pequenas (dezenas a milhares de linhas) ou de vida curta
+  'contact_import_jobs.contact_import_jobs_tenant_id_fkey',
+  'contact_imports.contact_imports_list_fk',
+  'login_challenges.login_challenges_user_id_fkey',
+  'number_assignments.number_assignments_phone_number_id_fkey',
+  'number_inventory.number_inventory_provider_id_fkey',
+  'phone_numbers.phone_numbers_inventory_id_fkey',
+  'whatsapp_accounts.whatsapp_accounts_connection_id_fkey',
+  'whatsapp_accounts.whatsapp_accounts_portfolio_id_fkey',
+]);
+
+describe('chaves estrangeiras', () => {
+  it('toda FK tem um índice que começa pelas colunas dela', async () => {
+    const rows = await admin<{ fk: string }[]>`
+      select c.conrelid::regclass || '.' || c.conname as fk
+        from pg_constraint c
+       where c.contype = 'f' and c.connamespace = 'public'::regnamespace
+         and not exists (
+           select 1 from pg_index i
+            where i.indrelid = c.conrelid
+              and (i.indkey::int2[])[0:cardinality(c.conkey) - 1] @> c.conkey
+              and (i.indkey::int2[])[0:cardinality(c.conkey) - 1] <@ c.conkey)
+       order by 1`;
+    expect(rows.map((r) => r.fk).filter((fk) => !FK_INDEX_EXEMPT.has(fk))).toEqual([]);
+  });
+});
