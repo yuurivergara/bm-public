@@ -346,6 +346,12 @@ create table suppressions (
 );
 ```
 
+> **Migration 0004 (S4)** — implementado com estas diferenças: `contact_imports` guarda `file_sha256`/`file_size`
+> em vez de `file_key` (o arquivo é apagado após a análise), `mapping`, `list_name`, `existing_count`, `error_sample`
+> e status `confirming`/`cancelled`; prévia em `contact_import_rows` (**UNLOGGED**, apagada na confirmação); fila
+> `contact_import_jobs` sem RLS (só IDs, exceção documentada como `meta_asset_routes`); `suppressions` ganhou
+> `phone_masked` (exibição) e `created_by`. `legal_basis` usa códigos sem acento.
+
 ### 4.6 Templates
 
 ```sql

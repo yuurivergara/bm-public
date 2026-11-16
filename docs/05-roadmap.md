@@ -164,3 +164,19 @@ gantt
 | Provedor de números com API (código por webhook) | ⏳ | Depende da escolha do provedor (pendência do usuário) |
 
 **Testes atuais:** 147 (27 shared, 10 banco/RLS, 26 meta-client, 10 meta-sim, 74 API).
+
+### S4 — Contatos ✅
+
+| Item | Status | Observações |
+|---|---|---|
+| Migration 0004 | ✅ | `contact_imports`, `contact_import_rows` (UNLOGGED), `contact_import_jobs` (fila sem RLS, só IDs), `contacts`, `contact_lists`, `contact_list_members`, `consent_records`, `suppressions`; RLS. Aplicada no staging |
+| Upload CSV/XLSX/TXT | ✅ | Multipart em streaming direto para disco (limite `IMPORT_MAX_BYTES`, 200 MB); separador e encoding (UTF-8/latin1) detectados; XLSX em streaming (1ª planilha); arquivo apagado após a análise, fica o SHA-256 |
+| Declaração de origem | ✅ | Obrigatória: origem, base legal (LGPD), aceite e observação; vira `consent_records` na confirmação |
+| Normalização + dedupe + prévia | ✅ | E.164 com nono dígito; classifica válido / inválido / duplicado / suprimido / já existente; amostra de até 20 erros |
+| Listas | ✅ | Confirmação em lote: upsert de contatos (atributos mesclados), lista, membros, consentimento |
+| Supressão | ✅ | Permanente, por hash do telefone por cliente; aplicada na análise, na confirmação (inclusive supressões feitas depois da prévia) e na inserção de membros; supressão manual tira o contato das listas existentes |
+| Critério de aceite no staging | ✅ | `deploy/staging-import-load.sh`: **1M linhas em 194 s** (upload 2 s · prévia 45 s · confirmação 147 s), 980 mil válidas, 10 mil inválidas, 10 mil duplicadas — limite era 600 s |
+| Índices das FKs (migration 0005) | ✅ | Apagar os contatos da carga travou horas: `consent_records` não tinha índice por `contact_id`. Corrigido + teste que exige índice em toda FK (exceções documentadas) |
+| Tela de importação (front) | ⏳ | Junto com o painel (S6+); a API já devolve colunas para o mapeamento |
+
+**Testes atuais:** 157 (28 shared, 11 banco/RLS/FKs, 26 meta-client, 10 meta-sim, 82 API).

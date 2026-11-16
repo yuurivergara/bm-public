@@ -72,7 +72,16 @@
 | POST | `/tenants/:id/imports` | Upload (URL pré-assinada S3) + mapeamento de colunas + **declaração de origem** | Op |
 | GET | `/tenants/:id/imports/:importId` | Status + relatório (válidos, inválidos, duplicados, suprimidos) | V |
 | POST | `/tenants/:id/imports/:importId/confirm` | Confirma e cria a lista | Op |
-| GET | `/tenants/:id/lists` · `/lists/:listId` | Listas | V |
+| GET | `/tenants/:id/lists` · `/lists/:listId` · `/lists/:listId/members` | Listas e membros (telefone mascarado, cursor) | V |
+| GET/POST | `/tenants/:id/suppressions` | Supressão permanente (manual/reclamação); não há rota para remover | V / Op |
+| DELETE | `/tenants/:id/imports/:importId` | Descarta uma importação ainda não confirmada | Op |
+
+> Implementado no S4. Sem S3/MinIO no MVP: o upload é **multipart direto na API** (campos antes do arquivo,
+> limite `IMPORT_MAX_BYTES`), gravado em disco só até a análise e depois apagado (fica o SHA-256 como evidência).
+> Análise e confirmação rodam em segundo plano (202 + consulta do status). Campos da declaração:
+> `originDeclaration` (customers | signup | leads | other), `legalBasis` (consentimento | legitimo_interesse |
+> execucao_contrato), `declarationAccepted=true`, `declarationNotes`. Mapeamento opcional `mapping`
+> (JSON: `phone`, `name`, `attributes`); sem ele, a coluna do telefone é detectada pelo cabeçalho.
 | GET | `/tenants/:id/contacts` | Busca de contatos | V |
 | GET/POST/DELETE | `/tenants/:id/suppressions` | Lista de descadastros (consulta por telefone, inclusão manual) | V / Op / O |
 
