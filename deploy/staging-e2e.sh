@@ -103,6 +103,9 @@ if [[ "$(jq -r '.phoneNumber.registrationStatus // empty' <<<"$NUM")" != registe
   NUM="$(api -X POST "$P/register" -d '{}')"
 fi
 [[ "$(jq -r .phoneNumber.registrationStatus <<<"$NUM")" == registered ]] || fail "número não registrado: $NUM"
+# o meta-sim perde o estado a cada deploy: garante que o número registrado existe lá (mesmo ID)
+sim POST /_sim/phones "$(jq -nc --arg w "102290129340499" --arg id "$(jq -r .phoneNumber.metaPhoneNumberId <<<"$NUM")" \
+  --arg p "$(jq -r .assignment.phoneE164 <<<"$NUM")" '{wabaId:$w,id:$id,phone:$p,verifiedName:"Lucky Shrub 2"}')" >/dev/null
 ok "número $(jq -r .assignment.phoneE164 <<<"$NUM") registrado (estoque: $(jq -r .assignment.inventoryStatus <<<"$NUM"))"
 
 echo "== 8. template: criar → revisão (webhook pela URL pública) → APPROVED"
