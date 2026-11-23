@@ -36,6 +36,15 @@ Prisma lida mal com particionamento nativo, RLS e SQL avançado (Lua/ZSET ficam 
 - TanStack Table (tabelas avançadas, filtros), TanStack Query, Recharts (gráficos), dark mode nativo.
 - O painel é interno; a única página pública é `/connect/:token` (Embedded Signup).
 
+> **Nota (2026-11-23) — desvio do plano no MVP:** o painel (`apps/web`) é um **SPA Vite + React 18 +
+> React Router + TanStack Query + Tailwind CSS 4**, **servido pela própria API** (`@fastify/static`,
+> pasta `WEB_DIST_DIR`; a imagem Docker usa `/app/web`). Motivos: (1) o cookie de sessão é
+> `SameSite=strict`, então painel e API precisam da **mesma origem**; (2) na VPS (D-16) não há
+> container extra para um servidor Next.js; (3) o painel não precisa de SSR. GET fora de `/api/`,
+> `/webhooks/`, `/healthz` e `/readyz` devolve o `index.html` (rotas do SPA); assets com hash ficam em
+> cache longo. Em desenvolvimento, `pnpm --filter @bm/web dev` (Vite, porta 5173) repassa `/api` para a
+> API. Se o Embedded Signup (`/connect/:token`) entrar, vira uma rota do mesmo SPA.
+
 ### 1.5 Banco e cache
 - **PostgreSQL 16** gerenciado (RDS): fonte da verdade, RLS, particionamento declarativo.
 - **Redis 7** gerenciado (ElastiCache): filas BullMQ, rate limiters, janela de capacidade de 24h. **Não** é fonte da verdade — tudo é reconstruível a partir do Postgres.
