@@ -10,6 +10,12 @@ set -euo pipefail
 
 HOST="${VPS_HOST:-bms-vps}"
 DIR=/opt/bm-platform
+INSTANCE=staging
+if [[ "${1:-}" == "--prod" ]]; then
+  DIR=/opt/bm-prod
+  INSTANCE=prod
+  shift
+fi
 
 remote_apply() {
   # stdin: linhas CHAVE=valor
@@ -21,7 +27,7 @@ remote_apply() {
     done
     chmod 600 .env
     tag=\$(grep -m1 \"^IMAGE_TAG=\" .env | cut -d= -f2-)
-    /usr/local/sbin/bm-deploy \"deploy \$tag\" </dev/null'"
+    BM_INSTANCE=$INSTANCE /usr/local/sbin/bm-deploy \"deploy \$tag\" </dev/null'"
 }
 
 if [[ "${1:-}" == "--sim" ]]; then

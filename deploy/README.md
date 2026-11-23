@@ -15,6 +15,18 @@ push no master → CI verde → deploy.yml: build das imagens (API + meta-sim) �
 > Por isso ela é **somente staging** (meta-sim e números de teste, sem token de cliente real).
 > Antes do piloto, decidir: VPS dedicada para produção ou retirar as pilhas não oficiais do host.
 
+## Produção (decisão de 16/11)
+
+Segunda instância na mesma VPS, isolada do staging: pilha **`bm-prod`** em `/opt/bm-prod`, domínio
+**https://painel.179-197-76-7.sslip.io**, Graph API **real** (nunca meta-sim), banco, segredos e backup próprios.
+
+- Criar/promover: `OWNER_EMAIL=… deploy/prod-init.sh [sha7]` (padrão: a tag que está no staging, já testada).
+  O Actions **só** implanta o staging: `BM_INSTANCE=prod` só chega quando o root chama o `bm-deploy` direto.
+- App da plataforma (BM do Yuri): `deploy/set-meta-app.sh --prod`. Até lá o `META_APP_SECRET` é provisório e só
+  funcionam clientes com **app próprio** (ID + chave secreta do app informados na conexão, pelo painel).
+- Backup no R2: `deploy/set-backup-r2.sh --prod`.
+- ⚠️ Condição da decisão: Vendra (Evolution), bms e copy-whats **parados** antes de tokens reais de clientes.
+
 ## Arquivos
 
 | Arquivo                                             | Função                                                                                                                                                                                  |
@@ -29,7 +41,8 @@ push no master → CI verde → deploy.yml: build das imagens (API + meta-sim) �
 | `deploy/set-backup-r2.sh`                           | Liga o backup no Cloudflare R2 (pede Account ID, bucket e chaves sem eco; grava só no `.env` da VPS), opcionalmente o ping do healthchecks.io, reimplanta e confere base + restauração. |
 | `deploy/staging-import-load.sh`                     | Teste de carga do S4: CSV sintético de 1M linhas → prévia → confirmação, mede e limpa.                                                                                                  |
 | `deploy/staging-lib.sh` / `staging-add-operator.sh` | Login de serviço (senha + TOTP) e criação de operadores pela API.                                                                                                                       |
-| `deploy/set-meta-app.sh`                            | Troca o simulador pelo app real da Meta (pede o app secret sem eco e grava só na VPS).                                                                                                  |
+| `deploy/set-meta-app.sh`                            | Troca o simulador pelo app real da Meta (pede o app secret sem eco e grava só na VPS). `--prod`: app da plataforma na produção.                                                        |
+| `deploy/prod-init.sh`                               | Cria/atualiza a produção (`bm-prod`): segredos na VPS, deploy da tag testada no staging, conta do dono.                                                                                 |
 | `deploy/postgres/`                                  | Imagem `bm-postgres` (Postgres + WAL-G), scripts `bm-backup`/`bm-wal-archive`, `tag.sh` e o teste `test-backup.sh`.                                                                     |
 | `.github/workflows/deploy.yml`                      | Caminho normal: build/push no GHCR e deploy por SSH, com smoke test.                                                                                                                    |
 

@@ -11,6 +11,12 @@
 set -euo pipefail
 HOST="${VPS_HOST:-bms-vps}"
 DIR=/opt/bm-platform
+INSTANCE=staging
+if [[ "${1:-}" == "--prod" ]]; then
+  DIR=/opt/bm-prod
+  INSTANCE=prod
+  shift
+fi
 
 ask() { local v; read -r -p "$1: " v; printf '%s' "$v"; }
 lines=()
@@ -55,10 +61,11 @@ printf '%s\n' "${lines[@]}" | ssh "$HOST" "DIR='$DIR' bash -c '
 
 echo "== reimplantando a versão atual"
 TAG="$(ssh "$HOST" "grep -m1 '^IMAGE_TAG=' $DIR/.env | cut -d= -f2")"
-ssh "$HOST" "/usr/local/sbin/bm-deploy 'deploy $TAG' </dev/null"
+ssh "$HOST" "BM_INSTANCE=$INSTANCE /usr/local/sbin/bm-deploy 'deploy $TAG' </dev/null"
 
 echo "== base + teste de restauração no destino novo (feitos pelo bm-backup ao subir)"
-ssh "$HOST" 'set -u; C=bm-platform-bm-backup-1
+PROJECT=bm-platform; [[ "$INSTANCE" == prod ]] && PROJECT=bm-prod
+ssh "$HOST" "C=$PROJECT-bm-backup-1 bash -s" <<<'set -u
   since=$(docker inspect -f "{{.State.StartedAt}}" $C)
   logs() { docker logs --since "$since" $C 2>&1 | grep "backup:"; }
   for _ in $(seq 1 30); do logs | grep -q "base: iniciando" && break; sleep 2; done
