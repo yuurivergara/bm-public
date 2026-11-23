@@ -213,3 +213,4 @@ Recebe SMS/transcrição com o código de verificação; validação por assinat
 | `TELEGRAM_BOT_TOKEN`, `ALERT_CHAT_ID`, `ALERT_EMAIL` | alertas | Secrets Manager |
 | `SESSION_SECRET` | assinatura de cookies | Secrets Manager |
 | `PUBLIC_BASE_URL` | URL pública (`/connect`, webhooks) | config |
+| `WEB_DIST_DIR` | build do painel (`apps/web/dist`) servido pela API na mesma origem; sem `index.html` na pasta, o painel não é servido. Imagem Docker: `/app/web` | config |

@@ -34,10 +34,15 @@ DATABASE_APP_PASSWORD=bm_app_dev pnpm db:migrate
 OWNER_EMAIL=voce@empresa.com OWNER_NAME="Seu Nome" OWNER_PASSWORD='senha-com-12+-caracteres' \
   pnpm --filter @bm/api create-owner
 pnpm dev:api                         # http://localhost:3000/healthz
+pnpm --filter @bm/web dev            # painel em http://localhost:5173 (repassa /api para :3000)
 ```
 
-Primeiro login: `POST /api/v1/auth/login` devolve `otpauthUri` (cadastre no app autenticador) e
-`challengeToken`; depois `POST /api/v1/auth/totp` com o código de 6 dígitos cria a sessão.
+Depois de `pnpm build`, a própria API também serve o painel em http://localhost:3000 (pasta
+`apps/web/dist`, variável `WEB_DIST_DIR`). Em produção é assim: painel e API na mesma origem.
+
+Primeiro login: o painel mostra o QR code do autenticador depois da senha (pela API:
+`POST /api/v1/auth/login` devolve `otpauthUri` e `challengeToken`; depois `POST /api/v1/auth/totp`
+com o código de 6 dígitos cria a sessão).
 
 | Comando          | O que faz                                                         |
 | ---------------- | ----------------------------------------------------------------- |
@@ -50,6 +55,7 @@ Primeiro login: `POST /api/v1/auth/login` devolve `otpauthUri` (cadastre no app 
 
 ```
 apps/api           NestJS (Fastify): auth + TOTP, sessões, RBAC, auditoria, clientes, health
+apps/web           painel (Vite + React + TanStack Query + Tailwind), servido pela API
 packages/db        migrations SQL (fonte da verdade), schema Drizzle, RLS, migrador
 packages/shared    telefones E.164 (nono dígito), CNPJ (inclusive alfanumérico), criptografia, RBAC
 packages/config    tsconfig base
@@ -58,7 +64,7 @@ docs/              pacote de planejamento
 
 ## Stack (resumo)
 
-NestJS (Fastify) + TypeScript · Next.js + Tailwind + shadcn/ui · PostgreSQL 16 (RLS, partições) · Redis + BullMQ · AWS sa-east-1 (ECS Fargate, RDS, ElastiCache, S3, KMS) · Terraform · Cloudflare · OpenTelemetry + Grafana Cloud + Sentry.
+NestJS (Fastify) + TypeScript · painel SPA Vite + React + Tailwind (servido pela API) · PostgreSQL 16 (RLS, partições) · Redis + BullMQ · AWS sa-east-1 (ECS Fargate, RDS, ElastiCache, S3, KMS) · Terraform · Cloudflare · OpenTelemetry + Grafana Cloud + Sentry.
 
 ## Princípios
 

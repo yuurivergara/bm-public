@@ -29,7 +29,7 @@ import type { RequestContext } from '../common/request-context';
 import { AuditService } from '../core/audit.service';
 import { DB, KEY_PROVIDER, META_CLIENT } from '../core/tokens';
 
-const { and, eq, inArray, ne } = orm;
+const { and, eq, inArray, ne, sql } = orm;
 
 export interface ConnectInput {
   businessId: string;
@@ -504,6 +504,8 @@ export class AssetsService {
           kind: metaConnections.kind,
           method: metaConnections.method,
           tokenLast4: metaConnections.tokenLast4,
+          metaAppId: metaConnections.metaAppId,
+          ownApp: sql<boolean>`${metaConnections.appSecretEnc} is not null`,
           status: metaConnections.status,
           lastValidatedAt: metaConnections.lastValidatedAt,
           lastError: metaConnections.lastError,
@@ -520,7 +522,10 @@ export class AssetsService {
           .filter((w) => w.portfolioId === p.id)
           .map((w) => ({
             ...strip(w),
-            phoneNumbers: phones.filter((n) => n.wabaId === w.id).map(strip),
+            phoneNumbers: phones
+              .filter((n) => n.wabaId === w.id)
+              // PIN de duas etapas (cifrado) nunca sai da API
+              .map(({ twoStepPinEnc: _p, pinKeyId: _k, ...n }) => strip(n)),
           })),
       })),
     };
