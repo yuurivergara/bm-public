@@ -793,6 +793,38 @@ export function createMetaSim(opts: MetaSimOptions) {
     },
   );
 
+  /**
+   * O estado do simulador é só em memória: depois de reiniciar (deploy), um número já registrado
+   * na plataforma some daqui. Esta rota o recria, CONNECTED, com o mesmo ID (staging-e2e).
+   */
+  app.post<{ Body: { wabaId?: string; id?: string; phone?: string; verifiedName?: string } }>(
+    '/_sim/phones',
+    async (req, reply) => {
+      const { wabaId, id, phone, verifiedName } = req.body ?? {};
+      const waba = wabaId ? state.objects.get(wabaId) : undefined;
+      if (waba?.kind !== 'waba' || !id || !/^\d{5,25}$/.test(id) || !phone) {
+        return reply.status(400).send({ error: 'wabaId (existente), id e phone são obrigatórios' });
+      }
+      const existed = state.objects.get(id)?.kind === 'phone_number';
+      if (!existed) {
+        state.objects.set(id, {
+          kind: 'phone_number',
+          parentId: waba.data.id,
+          data: {
+            id,
+            display_phone_number: phone,
+            verified_name: verifiedName ?? 'Sim',
+            name_status: 'APPROVED',
+            code_verification_status: 'VERIFIED',
+            quality_rating: 'GREEN',
+            status: 'CONNECTED',
+          },
+        });
+      }
+      return { id, restored: !existed };
+    },
+  );
+
   /** Código que o provedor de números receberia por SMS/voz (para testes). */
   app.get<{ Params: { id: string } }>('/_sim/verification-codes/:id', async (req, reply) => {
     const code = state.verificationCodes.get(req.params.id);
