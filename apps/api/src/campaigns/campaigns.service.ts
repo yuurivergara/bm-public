@@ -73,6 +73,16 @@ const BUCKET: Record<string, keyof Counts> = {
   cancelled: 'cancelled',
 };
 
+/** Filtro do painel → status internos (o painel agrupa como os contadores). */
+const GROUPS: Record<string, string[]> = {
+  pending: ['pending', 'sending'],
+  sent: ['accepted', 'sent'],
+};
+function statusGroup(status: string): string {
+  const list = GROUPS[status] ?? (status in BUCKET ? [status] : []);
+  return list.length ? list.map((x) => `'${x}'`).join(',') : "'__none__'";
+}
+
 /** Limite efetivo do portfolio (null = ilimitado). */
 export function effectiveLimit(
   tier: string | null,
@@ -126,7 +136,7 @@ export class CampaignsService {
         select r.id, c.phone_e164, c.name, r.status, r.error_code, r.error_message, r.updated_at
           from campaign_recipients r join contacts c on c.id = r.contact_id
          where r.campaign_id = ${campaignId}
-           ${q.status ? sql`and r.status = ${q.status}` : sql``}
+           ${q.status ? sql`and r.status in ${sql.raw(`(${statusGroup(q.status)})`)}` : sql``}
            ${q.after ? sql`and r.id > ${q.after}` : sql``}
          order by r.id
          limit ${q.limit + 1}`);

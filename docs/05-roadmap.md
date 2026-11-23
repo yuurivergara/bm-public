@@ -129,7 +129,7 @@ gantt
 | Infra de staging (VPS BMS) | ✅ | VPS endurecida (`deploy/provision.sh`). Staging em https://bm.179-197-76-7.sslip.io. Deploy oficial (D-16b): GitHub Actions → GHCR → SSH com comando forçado (`deploy/bm-deploy.sh`) (ativo desde o merge do PR #1); ponte manual `deploy/vps-deploy.sh` |
 | Chave mestra sem KMS (D-16) | ✅ | `MASTER_KEY`/`MASTER_KEY_ID` em staging/prod; `LOCAL_MASTER_KEY` continua só dev/test |
 | Backup contínuo do Postgres fora da VPS + restauração testada | 🟡 | WAL-G: WAL cifrado a cada ≤ 5 min, base diária, restauração testada toda semana no staging e a cada push no CI (`deploy/postgres/test-backup.sh`). Falta o destino **fora** da VPS (R2/B2; hoje volume local) e o `BACKUP_PING_URL` |
-| Painel web (Next.js) — tela de login | ⏳ | Previsto junto com S2/S6 |
+| Painel web — tela de login | ✅ | No painel `apps/web` (Vite + React; ver "Painel web" abaixo) |
 
 ### S2 — Ativos + Meta ✅ (com simulador; falta validar com app/número reais da Meta)
 
@@ -177,7 +177,7 @@ gantt
 | Supressão | ✅ | Permanente, por hash do telefone por cliente; aplicada na análise, na confirmação (inclusive supressões feitas depois da prévia) e na inserção de membros; supressão manual tira o contato das listas existentes |
 | Critério de aceite no staging | ✅ | `deploy/staging-import-load.sh`: **1M linhas em 194–231 s** (upload 2 s · prévia 45–57 s · confirmação 147–172 s; o maior com os índices da 0005), 980 mil válidas, 10 mil inválidas, 10 mil duplicadas — limite era 600 s |
 | Índices das FKs (migration 0005) | ✅ | Apagar os contatos da carga travou horas: `consent_records` não tinha índice por `contact_id`. Corrigido + teste que exige índice em toda FK (exceções documentadas) |
-| Tela de importação (front) | ⏳ | Junto com o painel (S6+); a API já devolve colunas para o mapeamento |
+| Tela de importação (front) | ✅ | No painel `apps/web` (assistente: arquivo → origem → colunas → conferir → pronto) |
 
 **Testes atuais:** 157 (28 shared, 11 banco/RLS/FKs, 26 meta-client, 10 meta-sim, 82 API).
 
@@ -195,6 +195,15 @@ gantt
 | Portão de qualidade | ✅ | > 10% de falhas (amostra ≥ 50) pausa a campanha |
 | App próprio do cliente | ✅ | Ponte até o Tech Provider: `appId` + `appSecret` na conexão; proof e webhooks com o secret dele, só para as WABAs daquela conexão |
 | Ondas, agendamento, relatório, reenvio de `uncertain` | ⏳ | Próximas etapas |
-| Painel web | 🟡 | Em construção (apps/web) |
+| Painel web | ✅ | Ver seção abaixo |
 
-**Testes atuais:** 169 (28 shared, 11 banco/RLS/FKs, 26 meta-client, 10 meta-sim, 94 API).
+**Testes atuais:** 205 (28 shared, 11 banco/RLS/FKs, 26 meta-client, 10 meta-sim, 99 API, 31 painel).
+
+### Painel web (MVP) ✅ 
+
+| Item | Status | Observações |
+|---|---|---|
+| App `apps/web` | ✅ | SPA Vite + React 18 + React Router + TanStack Query + Tailwind 4, servido pela API (`WEB_DIST_DIR`, nota em docs/02 §1.4). Claro/escuro automático, funciona no celular |
+| Telas | ✅ | Login (senha → QR/TOTP), Clientes (lista/busca/cadastro), cliente com abas (visão geral com próximos passos, conexão WhatsApp por token, número do estoque com registro passo a passo, modelos com prévia e validação, contatos + assistente de importação, opt-out, disparos), Disparos (todos os clientes), Novo disparo (assistente de 6 passos), acompanhamento do disparo (atualiza a cada 3 s), Números e Usuários (dono) |
+| Disparos | ✅ | Ligados às rotas do S5 (`/campaigns`, `/capacity`, `/recipients`) |
+| Testes | ✅ | 31 unitários no painel (erros da API, máscara de telefone, validação de modelo, mapeamento de colunas, progresso) + 4 e2e da API servindo o SPA |

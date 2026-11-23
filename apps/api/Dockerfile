@@ -1,18 +1,22 @@
 # Imagem única da API: entrypoints api (padrão), webhooks e workers serão comandos distintos.
+# Inclui o painel web (apps/web, SPA do Vite), servido pela própria API a partir de WEB_DIST_DIR.
 FROM node:22-alpine AS build
 WORKDIR /repo
 RUN corepack enable
 COPY . .
 RUN pnpm install --frozen-lockfile \
  && pnpm --filter @bm/api... build \
+ && pnpm --filter @bm/web build \
  && pnpm --filter @bm/api deploy --legacy --prod /out
 
 FROM node:22-alpine AS runtime
 ENV NODE_ENV=production
+ENV WEB_DIST_DIR=/app/web
 WORKDIR /app
 RUN addgroup -S app && adduser -S app -G app \
  && install -d -o app -g app -m 700 /data/imports
 COPY --from=build --chown=app:app /out ./
+COPY --from=build /repo/apps/web/dist /app/web
 # Arquivos de compose da mesma versão: o deploy na VPS (deploy/bm-deploy.sh) os extrai da imagem.
 COPY deploy/docker-compose.prod.yml deploy/docker-compose.vps.yml deploy/docker-compose.sim.yml /app/deploy/
 COPY deploy/postgres/ /app/deploy/postgres/

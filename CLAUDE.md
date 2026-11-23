@@ -72,7 +72,10 @@ Definição de pronto: lint, typecheck e testes verdes; CI (`.github/workflows/c
   limite de 24 h por portfolio (`capacity_usage` + advisory lock), erros pelo catálogo, status e opt-out por webhook,
   **app próprio do cliente** (App Secret por conexão: proof + webhooks). Migration 0006. Envio só com variáveis no corpo
   (docs/10 §12). 169 testes.
-- ⏳ Próximo: painel web (apps/web) para o sócio operar; produção na VPS com a Meta real.
+- ✅ Painel web (`apps/web`, Vite + React + TanStack Query + Tailwind), servido pela própria API (`WEB_DIST_DIR`,
+  fallback SPA). Login com TOTP, clientes, conexão (token + app próprio do cliente), número, modelos, importação,
+  opt-out, disparos (assistente + acompanhamento), estoque e usuários. 205 testes no total.
+- ⏳ Próximo: produção na VPS com a Meta real; depois ondas/agendamento/relatórios e Tech Provider (S7–S8).
 - 🟡 Infra (D-16/D-16a/D-16b): staging no ar em https://bm.179-197-76-7.sslip.io (VPS BMS, `/opt/bm-platform`,
   projeto compose `bm-platform`, com meta-sim). Deploy oficial: Actions → GHCR → `ssh deploy@… "deploy <sha>"`
   (comando forçado `deploy/bm-deploy.sh`); ponte manual `deploy/vps-deploy.sh`; teste ponta a ponta

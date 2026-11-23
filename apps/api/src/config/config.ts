@@ -1,5 +1,5 @@
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { type KeyProvider, LocalKeyProvider } from '@bm/shared';
 import { z } from 'zod';
 
@@ -80,6 +80,12 @@ const schema = z.object({
   DEFAULT_MESSAGING_LIMIT: z.coerce.number().int().positive().default(250),
   /** Quarentena de número liberado antes do reuso (FR-NUM-05). */
   NUMBER_QUARANTINE_DAYS: z.coerce.number().int().min(0).max(3650).default(90),
+  /**
+   * Build do painel web (apps/web/dist). A API serve o SPA na mesma origem (o cookie de sessão é
+   * SameSite=strict). Se a pasta não tiver index.html, o painel simplesmente não é servido.
+   * Padrão: apps/web/dist relativo a este arquivo (src/ ou dist/); a imagem Docker define /app/web.
+   */
+  WEB_DIST_DIR: z.string().default(resolve(__dirname, '../../../web/dist')),
 });
 
 export type AppConfig = z.infer<typeof schema>;

@@ -1,8 +1,11 @@
 import 'reflect-metadata';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import fastifyCookie from '@fastify/cookie';
 import helmet from '@fastify/helmet';
 import multipart from '@fastify/multipart';
 import rateLimit from '@fastify/rate-limit';
+import fastifyStatic from '@fastify/static';
 import { type DynamicModule, type LogLevel, Module, RequestMethod } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD, NestFactory } from '@nestjs/core';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
@@ -116,6 +119,38 @@ function nestLogLevels(level: AppConfig['LOG_LEVEL']): LogLevel[] | false {
   return order.slice(0, idx + 1);
 }
 
+/** Caminhos que nunca caem no fallback do SPA (respondem 404 em JSON, como antes). */
+const NOT_SPA = /^\/(api|webhooks)(\/|$)|^\/(healthz|readyz)$/;
+
+/**
+ * Painel web (apps/web, build do Vite) servido pela própria API: mesma origem, sem container extra
+ * (docs/02-arquitetura.md §1.4). Arquivos com hash em /assets ficam em cache longo; o index.html
+ * nunca é cacheado. GET de rota desconhecida fora da API devolve o index.html (rotas do SPA).
+ */
+async function serveWebPanel(app: NestFastifyApplication, dir: string): Promise<boolean> {
+  if (!existsSync(join(dir, 'index.html'))) return false;
+  await app.register(fastifyStatic, {
+    root: dir,
+    prefix: '/',
+    wildcard: false,
+    cacheControl: false,
+    setHeaders: (reply, path) => {
+      const immutable = path.startsWith(join(dir, 'assets'));
+      reply.header('cache-control', immutable ? 'public, max-age=31536000, immutable' : 'no-cache');
+    },
+  });
+  app
+    .getHttpAdapter()
+    .getInstance()
+    .get('/*', (req, reply) => {
+      const path = req.url.split('?')[0] ?? '/';
+      // API, webhooks, health e arquivos inexistentes (com extensão) seguem o 404 padrão.
+      if (NOT_SPA.test(path) || /\.[a-z0-9]+$/i.test(path)) return reply.callNotFound();
+      return reply.sendFile('index.html');
+    });
+  return true;
+}
+
 export interface CreateAppOptions {
   /** Destino alternativo dos logs do Fastify (testes que verificam vazamento de segredos). */
   logStream?: { write: (line: string) => void };
@@ -141,7 +176,12 @@ export async function createApp(
     // Corpo bruto disponível em req.rawBody: a assinatura dos webhooks é sobre os bytes exatos.
     rawBody: true,
   });
-  await app.register(helmet);
+  await app.register(helmet, {
+    contentSecurityPolicy: {
+      // Sem HTTPS (dev local servindo o painel pela API) o upgrade quebraria os assets.
+      directives: { upgradeInsecureRequests: config.SESSION_COOKIE_SECURE ? [] : null },
+    },
+  });
   await app.register(fastifyCookie);
   // Upload de contatos (FR-CON-01): um arquivo, gravado em disco em streaming.
   await app.register(multipart, {
@@ -167,6 +207,7 @@ export async function createApp(
       { path: 'webhooks/meta', method: RequestMethod.POST },
     ],
   });
+  await serveWebPanel(app, config.WEB_DIST_DIR);
   app.enableShutdownHooks();
   return app;
 }
