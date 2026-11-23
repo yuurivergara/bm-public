@@ -1,20 +1,20 @@
 # Override para rodar a pilha fora da Coolify, direto na VPS (mesmo padrão de /opt/vendra):
 # a API entra na rede "coolify" e o Traefik da Coolify faz HTTPS (Let's Encrypt) pelo domínio.
-# Usado por deploy/vps-deploy.sh enquanto o fluxo GitHub Actions → Coolify não está ativo.
+# ROUTER_NAME separa os roteadores do Traefik de staging (bmapi) e produção (bmprod).
 services:
   api:
     networks: [default, coolify]
     labels:
       - traefik.enable=true
       - traefik.docker.network=coolify
-      - traefik.http.middlewares.bmapi-https.redirectscheme.scheme=https
-      - traefik.http.routers.bmapi-http.entrypoints=http
-      - traefik.http.routers.bmapi-http.middlewares=bmapi-https
-      - traefik.http.routers.bmapi-http.rule=Host(`${API_HOST:?defina API_HOST}`)
-      - traefik.http.routers.bmapi.entrypoints=https
-      - traefik.http.routers.bmapi.rule=Host(`${API_HOST}`)
-      - traefik.http.routers.bmapi.tls.certresolver=letsencrypt
-      - traefik.http.services.bmapi.loadbalancer.server.port=3000
+      - traefik.http.middlewares.${ROUTER_NAME:-bmapi}-https.redirectscheme.scheme=https
+      - traefik.http.routers.${ROUTER_NAME:-bmapi}-http.entrypoints=http
+      - traefik.http.routers.${ROUTER_NAME:-bmapi}-http.middlewares=${ROUTER_NAME:-bmapi}-https
+      - traefik.http.routers.${ROUTER_NAME:-bmapi}-http.rule=Host(`${API_HOST:?defina API_HOST}`)
+      - traefik.http.routers.${ROUTER_NAME:-bmapi}.entrypoints=https
+      - traefik.http.routers.${ROUTER_NAME:-bmapi}.rule=Host(`${API_HOST}`)
+      - traefik.http.routers.${ROUTER_NAME:-bmapi}.tls.certresolver=letsencrypt
+      - traefik.http.services.${ROUTER_NAME:-bmapi}.loadbalancer.server.port=3000
 
 networks:
   coolify:

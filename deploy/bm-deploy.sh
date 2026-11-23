@@ -11,8 +11,16 @@
 #  - Ponte manual (deploy/vps-deploy.sh), como root, com stdin vazio: usa imagens já carregadas.
 set -euo pipefail
 
-DIR=/opt/bm-platform
-PROJECT=bm-platform
+# Instância: staging (padrão) ou produção. BM_INSTANCE só chega quando o root chama direto
+# (`BM_INSTANCE=prod bm-deploy "deploy <sha>"`): o sudo da chave do GitHub Actions limpa o ambiente,
+# então o Actions só implanta o staging. Produção usa as imagens que o staging já baixou e testou.
+if [[ "${BM_INSTANCE:-staging}" == prod ]]; then
+  DIR=/opt/bm-prod
+  PROJECT=bm-prod
+else
+  DIR=/opt/bm-platform
+  PROJECT=bm-platform
+fi
 REGISTRY=ghcr.io
 COMPOSE=(docker compose -p "$PROJECT" --env-file .env
   -f docker-compose.prod.yml -f docker-compose.vps.yml)
@@ -53,8 +61,8 @@ set_env() {
 set_env IMAGE_TAG "$TAG"
 set_env PULL_POLICY never
 
-# meta-sim ligado até o app real da Meta ser configurado (deploy/set-meta-app.sh).
-if ! grep -q '^USE_META_SIM=false' .env; then
+# meta-sim ligado até o app real da Meta ser configurado (deploy/set-meta-app.sh). Nunca em produção.
+if [[ "$PROJECT" != bm-prod ]] && ! grep -q '^USE_META_SIM=false' .env; then
   COMPOSE+=(-f docker-compose.sim.yml)
 fi
 
