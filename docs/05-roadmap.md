@@ -175,7 +175,7 @@ gantt
 | Normalização + dedupe + prévia | ✅ | E.164 com nono dígito; classifica válido / inválido / duplicado / suprimido / já existente; amostra de até 20 erros |
 | Listas | ✅ | Confirmação em lote: upsert de contatos (atributos mesclados), lista, membros, consentimento |
 | Supressão | ✅ | Permanente, por hash do telefone por cliente; aplicada na análise, na confirmação (inclusive supressões feitas depois da prévia) e na inserção de membros; supressão manual tira o contato das listas existentes |
-| Critério de aceite no staging | ✅ | `deploy/staging-import-load.sh`: **1M linhas em 194 s** (upload 2 s · prévia 45 s · confirmação 147 s), 980 mil válidas, 10 mil inválidas, 10 mil duplicadas — limite era 600 s |
+| Critério de aceite no staging | ✅ | `deploy/staging-import-load.sh`: **1M linhas em 194–231 s** (upload 2 s · prévia 45–57 s · confirmação 147–172 s; o maior com os índices da 0005), 980 mil válidas, 10 mil inválidas, 10 mil duplicadas — limite era 600 s |
 | Índices das FKs (migration 0005) | ✅ | Apagar os contatos da carga travou horas: `consent_records` não tinha índice por `contact_id`. Corrigido + teste que exige índice em toda FK (exceções documentadas) |
 | Tela de importação (front) | ⏳ | Junto com o painel (S6+); a API já devolve colunas para o mapeamento |
 
