@@ -1,5 +1,5 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useParams } from 'react-router-dom';
 import { CampaignsUnavailable } from '../components/CampaignTable';
 import { IconBack } from '../components/icons';
@@ -83,6 +83,13 @@ function Recipients({
     getNextPageParam: (last) => last.next ?? undefined,
     refetchInterval: running ? 10_000 : false,
   });
+  // Ao terminar/pausar, o polling para: busca uma última vez para não ficar "Na fila" na tela.
+  const wasRunning = useRef(running);
+  const { refetch } = q;
+  useEffect(() => {
+    if (wasRunning.current && !running) void refetch();
+    wasRunning.current = running;
+  }, [running, refetch]);
   const rows = q.data?.pages.flatMap((p) => p.data) ?? [];
 
   return (
