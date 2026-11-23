@@ -19,6 +19,8 @@ const SENSITIVE = new Set([
   'tokenHash',
   'password',
   'accessTokenEnc',
+  'appSecretEnc',
+  'appSecret',
 ]);
 
 function scrub(value: unknown): unknown {

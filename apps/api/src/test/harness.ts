@@ -71,6 +71,7 @@ export async function createHarness(
     META_HTTP_TIMEOUT_MS: '2000',
     WEBHOOK_PROCESSOR_ENABLED: 'false',
     IMPORT_PROCESSOR_ENABLED: 'false',
+    CAMPAIGN_ENGINE_ENABLED: 'false',
     ...opts.env,
   });
   const app = await createApp(config, {

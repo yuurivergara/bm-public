@@ -68,7 +68,11 @@ Definição de pronto: lint, typecheck e testes verdes; CI (`.github/workflows/c
 - ✅ S4 Contatos: importação CSV/XLSX/TXT com prévia (fila `contact_import_jobs`, COPY numa temporária porque
   COPY não funciona com RLS), declaração de origem → `consent_records`, listas, supressão permanente por hash.
   Migrations 0004–0005 (0005: índices de FK; teste exige índice em toda FK). 157 testes. Carga no staging: 1M linhas em 194 s (`deploy/staging-import-load.sh`).
-- ⏳ Próximo: **S5 Envio + capacidade**.
+- ✅ S5 Envio + capacidade (`apps/api/src/campaigns/`): fila no Postgres (`campaign_dispatch` + `campaign_recipients`),
+  limite de 24 h por portfolio (`capacity_usage` + advisory lock), erros pelo catálogo, status e opt-out por webhook,
+  **app próprio do cliente** (App Secret por conexão: proof + webhooks). Migration 0006. Envio só com variáveis no corpo
+  (docs/10 §12). 169 testes.
+- ⏳ Próximo: painel web (apps/web) para o sócio operar; produção na VPS com a Meta real.
 - 🟡 Infra (D-16/D-16a/D-16b): staging no ar em https://bm.179-197-76-7.sslip.io (VPS BMS, `/opt/bm-platform`,
   projeto compose `bm-platform`, com meta-sim). Deploy oficial: Actions → GHCR → `ssh deploy@… "deploy <sha>"`
   (comando forçado `deploy/bm-deploy.sh`); ponte manual `deploy/vps-deploy.sh`; teste ponta a ponta

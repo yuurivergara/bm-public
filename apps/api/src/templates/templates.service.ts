@@ -30,7 +30,7 @@ export interface TemplateCreateInput extends CreateTemplateInput {
 }
 
 /** Palavras de opt-out (docs/02-arquitetura.md §6.4) aceitas no botão de quick reply. */
-const OPT_OUT_LABEL = /sair|parar|pare|stop|cancelar|descadastr|n[ãa]o quero|unsubscribe/i;
+export const OPT_OUT_LABEL = /sair|parar|pare|stop|cancelar|descadastr|n[ãa]o quero|unsubscribe/i;
 
 interface Button {
   type?: string;
@@ -89,7 +89,9 @@ export class TemplatesService {
 
     let created: { id: string; status?: string; category?: string };
     try {
-      created = await this.meta.withToken(waba.token).createTemplate(waba.metaWabaId, input);
+      created = await this.meta
+        .withToken(waba.token, waba.appSecret)
+        .createTemplate(waba.metaWabaId, input);
     } catch (err) {
       throw metaWriteError(err);
     }
@@ -154,7 +156,7 @@ export class TemplatesService {
     for (const w of wabas) {
       let remote: MetaTemplate[];
       try {
-        remote = await this.meta.withToken(w.token).listTemplates(w.metaWabaId);
+        remote = await this.meta.withToken(w.token, w.appSecret).listTemplates(w.metaWabaId);
       } catch (err) {
         const e = metaWriteError(err);
         errors.push({ wabaId: w.metaWabaId, code: e.code, message: e.message });
@@ -205,7 +207,7 @@ export class TemplatesService {
       const waba = await this.wabaWithToken(tenantId, row.wabaId);
       try {
         await this.meta
-          .withToken(waba.token)
+          .withToken(waba.token, waba.appSecret)
           .deleteTemplate(waba.metaWabaId, { name: row.name, hsmId: row.metaTemplateId });
       } catch (err) {
         throw metaWriteError(err);
@@ -259,6 +261,7 @@ export class TemplatesService {
           id: whatsappAccounts.id,
           metaWabaId: whatsappAccounts.metaWabaId,
           tokenEnc: metaConnections.accessTokenEnc,
+          appSecretEnc: metaConnections.appSecretEnc,
           connStatus: metaConnections.status,
         })
         .from(whatsappAccounts)
@@ -272,6 +275,7 @@ export class TemplatesService {
         id: r.id,
         metaWabaId: r.metaWabaId,
         token: await decryptSecret(r.tokenEnc, this.keys),
+        appSecret: r.appSecretEnc ? await decryptSecret(r.appSecretEnc, this.keys) : undefined,
       });
     }
     return out;

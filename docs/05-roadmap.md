@@ -180,3 +180,21 @@ gantt
 | Tela de importação (front) | ⏳ | Junto com o painel (S6+); a API já devolve colunas para o mapeamento |
 
 **Testes atuais:** 157 (28 shared, 11 banco/RLS/FKs, 26 meta-client, 10 meta-sim, 82 API).
+
+### S5 — Envio + capacidade ✅ (com simulador; falta validar com app/número reais)
+
+| Item | Status | Observações |
+|---|---|---|
+| Migration 0006 | ✅ | `campaigns`, `campaign_dispatch` (fila sem RLS, só IDs), `campaign_recipients`, `capacity_usage`; App Secret por conexão; motivo de supressão `marketing_opt_out` |
+| Envio de template | ✅ | Formato validado na doc (docs/10 §12): variáveis do corpo (posicionais e nomeadas). Cabeçalho com mídia/variável e botão com parâmetro: recusados com motivo até validar |
+| Capacidade | ✅ | Limite do portfolio × `CAPACITY_MARGIN` (90%) em 24 h móveis, lock por portfolio; quem já recebeu na janela não consome vaga; limite de pares de 6 s; ilimitado respeitado |
+| Idempotência | ✅ | `sending` antes da chamada; timeout = `uncertain` (nunca reenviado sozinho); processo que cai deixa `sending` → `uncertain` |
+| Erros | ✅ | Catálogo: transitórios com backoff (máx. 5), pares reagendados, spam/template/pacing pausam a campanha, pagamento/conta/token pausam o cliente (token → conexão `broken`), 131050 suprime, 131026 marca contato inválido |
+| Status por webhook | ✅ | sent → delivered → read sem regredir; `failed` com código; duplicados descartados |
+| Opt-out | ✅ | Botão de descadastro, palavra-chave exata (SAIR, PARAR, NÃO QUERO…) e `user_preferences = stop` → supressão permanente, sai das listas e cancela pendentes |
+| Portão de qualidade | ✅ | > 10% de falhas (amostra ≥ 50) pausa a campanha |
+| App próprio do cliente | ✅ | Ponte até o Tech Provider: `appId` + `appSecret` na conexão; proof e webhooks com o secret dele, só para as WABAs daquela conexão |
+| Ondas, agendamento, relatório, reenvio de `uncertain` | ⏳ | Próximas etapas |
+| Painel web | 🟡 | Em construção (apps/web) |
+
+**Testes atuais:** 169 (28 shared, 11 banco/RLS/FKs, 26 meta-client, 10 meta-sim, 94 API).

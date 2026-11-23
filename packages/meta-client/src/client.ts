@@ -164,9 +164,13 @@ export class MetaClient {
   private readonly appId?: string;
   private readonly appSecret: string;
 
-  /** Operações com o token de um cliente/system user (nunca logado). */
-  withToken(accessToken: string): MetaAssetsApi {
-    return new MetaAssetsApi(this.http, accessToken);
+  /**
+   * Operações com o token de um cliente/system user (nunca logado). `appSecret`: secret do app
+   * dono do token quando não é o app da plataforma (cliente com app próprio) — o
+   * `appsecret_proof` precisa ser calculado com ele.
+   */
+  withToken(accessToken: string, appSecret?: string): MetaAssetsApi {
+    return new MetaAssetsApi(this.http, accessToken, appSecret);
   }
 
   /**
@@ -184,10 +188,17 @@ export class MetaClient {
 }
 
 export class MetaAssetsApi {
+  private readonly http: Pick<GraphHttp, 'request'>;
+
   constructor(
-    private readonly http: GraphHttp,
+    http: GraphHttp,
     private readonly token: string,
-  ) {}
+    appSecret?: string,
+  ) {
+    this.http = appSecret
+      ? { request: (t, m, p, init = {}) => http.request(t, m, p, { ...init, appSecret }) }
+      : http;
+  }
 
   async getBusiness(businessId: string): Promise<MetaBusiness> {
     return (
@@ -384,4 +395,65 @@ export class MetaAssetsApi {
     );
     return res.data.success === true;
   }
+
+  /**
+   * Envia um template (docs/10-meta-referencia.md §8 e §12). Sucesso = **aceito** pela Meta, não
+   * entregue: o status chega por webhook. Um timeout aqui é ambíguo (MetaNetworkError.ambiguous) e
+   * nunca deve ser repetido automaticamente.
+   */
+  async sendTemplate(phoneNumberId: string, input: SendTemplateInput): Promise<SendMessageResult> {
+    const res = await this.http.request<{
+      contacts?: { input?: string; wa_id?: string }[];
+      messages?: { id: string; message_status?: string }[];
+    }>(this.token, 'POST', `/${encodeURIComponent(phoneNumberId)}/messages`, {
+      body: {
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: input.to,
+        type: 'template',
+        template: {
+          name: input.name,
+          language: { code: input.language },
+          ...(input.bodyParameters.length
+            ? {
+                components: [
+                  {
+                    type: 'body',
+                    parameters: input.bodyParameters.map((p) => ({
+                      type: 'text',
+                      ...(p.name ? { parameter_name: p.name } : {}),
+                      text: p.text,
+                    })),
+                  },
+                ],
+              }
+            : {}),
+        },
+      },
+    });
+    const msg = res.data.messages?.[0];
+    if (!msg?.id) throw new Error('Resposta de envio sem messages[0].id');
+    return {
+      wamid: msg.id,
+      messageStatus: msg.message_status,
+      waId: res.data.contacts?.[0]?.wa_id,
+    };
+  }
+}
+
+/** Template com variáveis só no corpo (cabeçalho com mídia/variável e botões com parâmetro: ⚠️ a validar). */
+export interface SendTemplateInput {
+  /** E.164 com "+" (recomendação da Meta). */
+  to: string;
+  name: string;
+  language: string;
+  /** Em ordem ({{1}}, {{2}}…) ou nomeados (`name` = parameter_name). */
+  bodyParameters: { name?: string; text: string }[];
+}
+
+export interface SendMessageResult {
+  wamid: string;
+  /** `accepted` | `held_for_quality_assessment` (pacing); opcional. */
+  messageStatus?: string;
+  waId?: string;
 }

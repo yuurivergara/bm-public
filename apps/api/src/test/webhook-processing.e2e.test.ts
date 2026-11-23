@@ -166,11 +166,11 @@ describe('processamento de webhooks de ativos (ponta a ponta)', () => {
 
   it('WABA desconhecida e campo sem handler são ignorados, não falham', async () => {
     await deliver('account_update', { event: 'ACCOUNT_DELETED' }, '999999999999999');
-    await deliver('messages', { messaging_product: 'whatsapp', statuses: [] });
+    await deliver('security', { phone_number: '15550783881', event: 'PIN_CHANGED' });
     expect(await processor.drain()).toMatchObject({ ignored: 2, failed: 0 });
     const rows = await h.admin<{ error: string }[]>`
       select error from webhook_events where status = 'ignored' order by id desc limit 2`;
-    expect(rows.map((r) => r.error).join('|')).toMatch(/sem handler para o campo messages/);
+    expect(rows.map((r) => r.error).join('|')).toMatch(/sem handler para o campo security/);
   });
 
   it('falha no handler → retry com backoff e, depois de esgotar, dead', async () => {

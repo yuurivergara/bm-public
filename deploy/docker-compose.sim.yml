@@ -10,6 +10,8 @@ services:
       - SIM_GRAPH_VERSION=${META_GRAPH_VERSION:-v27.0}
       - SIM_WEBHOOK_URL=https://${API_HOST:?}/webhooks/meta
       - SIM_DEMO_TOKEN=${SIM_DEMO_TOKEN:-}
+      # depois de cada envio emite sent → delivered → read (destinos terminados em 999: failed 131026)
+      - SIM_AUTO_STATUS=true
     deploy:
       resources:
         limits:

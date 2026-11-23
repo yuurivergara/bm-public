@@ -12,6 +12,10 @@ import { AuthController, authRateLimitSettings } from './auth/auth.controller';
 import { AuthGuard } from './auth/auth.guard';
 import { AuthService } from './auth/auth.service';
 import { SessionService } from './auth/session.service';
+import { CampaignEngine } from './campaigns/campaign-engine.service';
+import { CampaignsController } from './campaigns/campaigns.controller';
+import { CampaignsService } from './campaigns/campaigns.service';
+import { MESSAGE_WEBHOOK_HANDLERS } from './campaigns/message-handlers';
 import { ErrorFilter } from './common/http';
 import type { AppConfig } from './config/config';
 import { ContactsController } from './contacts/contacts.controller';
@@ -36,6 +40,7 @@ import {
   type WebhookFieldHandler,
   WebhookProcessor,
 } from './webhooks/webhook-processor.service';
+import { WebhookSecretsService } from './webhooks/webhook-secrets.service';
 import { MetaWebhooksController } from './webhooks/webhooks.controller';
 
 /** Campos removidos de todos os logs (tokens, senhas, cookies, códigos). */
@@ -65,6 +70,7 @@ class AppModule {
         NumbersController,
         TemplatesController,
         ContactsController,
+        CampaignsController,
         MetaWebhooksController,
       ],
       providers: [
@@ -73,18 +79,26 @@ class AppModule {
         UsersService,
         TenantsService,
         WebhookIngestService,
+        WebhookSecretsService,
         AssetsService,
         NumbersService,
         TemplatesService,
         ImportsService,
         ImportProcessor,
         ContactsService,
+        CampaignsService,
+        CampaignEngine,
         ...ASSET_WEBHOOK_HANDLERS,
         ...TEMPLATE_WEBHOOK_HANDLERS,
+        ...MESSAGE_WEBHOOK_HANDLERS,
         {
           provide: WEBHOOK_HANDLERS,
           useFactory: (...handlers: WebhookFieldHandler[]) => handlers,
-          inject: [...ASSET_WEBHOOK_HANDLERS, ...TEMPLATE_WEBHOOK_HANDLERS],
+          inject: [
+            ...ASSET_WEBHOOK_HANDLERS,
+            ...TEMPLATE_WEBHOOK_HANDLERS,
+            ...MESSAGE_WEBHOOK_HANDLERS,
+          ],
         },
         WebhookProcessor,
         { provide: APP_GUARD, useClass: AuthGuard },

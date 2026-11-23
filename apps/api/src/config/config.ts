@@ -66,6 +66,18 @@ const schema = z.object({
     .default('true')
     .transform((v) => v === 'true'),
   IMPORT_PROCESSOR_INTERVAL_MS: z.coerce.number().int().positive().default(2_000),
+  /** Motor de envio de campanhas (S5). */
+  CAMPAIGN_ENGINE_ENABLED: z
+    .enum(['true', 'false'])
+    .default('true')
+    .transform((v) => v === 'true'),
+  CAMPAIGN_ENGINE_INTERVAL_MS: z.coerce.number().int().positive().default(1_000),
+  /** Envios por número a cada ciclo (≈ msg/s com o intervalo padrão; a Meta permite 80/s). */
+  CAMPAIGN_RATE_PER_TICK: z.coerce.number().int().min(1).max(80).default(40),
+  /** Fração do limite de 24 h da Meta que a plataforma usa (o resto cobre envios fora dela). */
+  CAPACITY_MARGIN: z.coerce.number().min(0.1).max(1).default(0.9),
+  /** Limite assumido enquanto o portfolio não tem tier sincronizado (portfolio novo = 250). */
+  DEFAULT_MESSAGING_LIMIT: z.coerce.number().int().positive().default(250),
   /** Quarentena de número liberado antes do reuso (FR-NUM-05). */
   NUMBER_QUARANTINE_DAYS: z.coerce.number().int().min(0).max(3650).default(90),
 });

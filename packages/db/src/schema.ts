@@ -154,6 +154,10 @@ export const metaConnections = pgTable('meta_connections', {
   status: connectionStatus('status').notNull().default('active'),
   lastValidatedAt: ts('last_validated_at'),
   lastError: jsonb('last_error'),
+  /** App próprio do cliente (ponte até o Tech Provider): webhooks assinados com o secret dele. */
+  metaAppId: text('meta_app_id'),
+  appSecretEnc: bytea('app_secret_enc'),
+  appSecretKeyId: text('app_secret_key_id'),
   createdAt: ts('created_at').notNull().defaultNow(),
   updatedAt: ts('updated_at').notNull().defaultNow(),
 });
@@ -529,7 +533,8 @@ export type SuppressionReason =
   | 'opt_out_button'
   | 'manual'
   | 'complaint'
-  | 'invalid';
+  | 'invalid'
+  | 'marketing_opt_out';
 
 export const suppressions = pgTable(
   'suppressions',
@@ -545,6 +550,101 @@ export const suppressions = pgTable(
     createdAt: ts('created_at').notNull().defaultNow(),
   },
   (t) => [primaryKey({ columns: [t.tenantId, t.phoneHash] })],
+);
+
+// ------------------------------------------------------------------ S5 campanhas (0006)
+
+export type CampaignStatus = 'draft' | 'running' | 'paused' | 'completed' | 'cancelled' | 'failed';
+export type RecipientStatus =
+  | 'pending'
+  | 'sending'
+  | 'accepted'
+  | 'sent'
+  | 'delivered'
+  | 'read'
+  | 'failed'
+  | 'skipped'
+  | 'uncertain'
+  | 'cancelled';
+export interface CampaignVariable {
+  source: 'name' | 'attribute' | 'fixed';
+  /** Chave do atributo (source=attribute) ou texto (source=fixed). */
+  value?: string;
+  /** Usado quando o contato não tem o valor (nome/atributo vazio). */
+  fallback?: string;
+}
+
+export const campaigns = pgTable('campaigns', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id')
+    .notNull()
+    .references(() => tenants.id, { onDelete: 'cascade' }),
+  phoneNumberId: uuid('phone_number_id')
+    .notNull()
+    .references(() => phoneNumbers.id),
+  templateId: uuid('template_id')
+    .notNull()
+    .references(() => messageTemplates.id),
+  listId: uuid('list_id')
+    .notNull()
+    .references(() => contactLists.id),
+  name: text('name').notNull(),
+  status: text('status').$type<CampaignStatus>().notNull().default('draft'),
+  pauseReason: text('pause_reason'),
+  variables: jsonb('variables').$type<Record<string, CampaignVariable>>().notNull().default({}),
+  audienceSize: integer('audience_size'),
+  createdBy: uuid('created_by').references(() => users.id),
+  startedAt: ts('started_at'),
+  completedAt: ts('completed_at'),
+  createdAt: ts('created_at').notNull().defaultNow(),
+  updatedAt: ts('updated_at').notNull().defaultNow(),
+});
+
+export const campaignDispatch = pgTable('campaign_dispatch', {
+  campaignId: uuid('campaign_id')
+    .primaryKey()
+    .references(() => campaigns.id, { onDelete: 'cascade' }),
+  tenantId: uuid('tenant_id')
+    .notNull()
+    .references(() => tenants.id, { onDelete: 'cascade' }),
+  nextRunAt: ts('next_run_at').notNull().defaultNow(),
+  leaseUntil: ts('lease_until'),
+  createdAt: ts('created_at').notNull().defaultNow(),
+});
+
+export const campaignRecipients = pgTable('campaign_recipients', {
+  id: bigint('id', { mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
+  campaignId: uuid('campaign_id')
+    .notNull()
+    .references(() => campaigns.id, { onDelete: 'cascade' }),
+  tenantId: uuid('tenant_id').notNull(),
+  contactId: uuid('contact_id')
+    .notNull()
+    .references(() => contacts.id, { onDelete: 'cascade' }),
+  status: text('status').$type<RecipientStatus>().notNull().default('pending'),
+  attempts: smallint('attempts').notNull().default(0),
+  nextAttemptAt: ts('next_attempt_at'),
+  wamid: text('wamid'),
+  errorCode: integer('error_code'),
+  errorMessage: text('error_message'),
+  sentAt: ts('sent_at'),
+  deliveredAt: ts('delivered_at'),
+  readAt: ts('read_at'),
+  failedAt: ts('failed_at'),
+  updatedAt: ts('updated_at').notNull().defaultNow(),
+});
+
+export const capacityUsage = pgTable(
+  'capacity_usage',
+  {
+    portfolioId: uuid('portfolio_id')
+      .notNull()
+      .references(() => businessPortfolios.id, { onDelete: 'cascade' }),
+    tenantId: uuid('tenant_id').notNull(),
+    phoneHash: bytea('phone_hash').notNull(),
+    lastSentAt: ts('last_sent_at').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.portfolioId, t.phoneHash] })],
 );
 
 export const schema = {
@@ -573,4 +673,8 @@ export const schema = {
   contactListMembers,
   consentRecords,
   suppressions,
+  campaigns,
+  campaignDispatch,
+  campaignRecipients,
+  capacityUsage,
 };

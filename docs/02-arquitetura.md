@@ -30,6 +30,13 @@ Prisma lida mal com particionamento nativo, RLS e SQL avançado (Lua/ZSET ficam 
 
 **Escolha:** BullMQ. Reavaliar apenas acima do patamar Crescimento se houver necessidade de roteamento complexo.
 
+> **Implementado no S5 (VPS, MVP):** a fila de envio também é o próprio Postgres, como webhooks e importações — tabela
+> `campaign_dispatch` (campanhas em andamento, lease) + `campaign_recipients` (estado por destinatário, claim com
+> `FOR UPDATE SKIP LOCKED`). Capacidade de 24 h em `capacity_usage` (uma linha por telefone e portfolio) com
+> `pg_advisory_xact_lock` por portfolio no lugar do script Lua; limite de pares (6 s) pela mesma tabela. Ritmo por número:
+> `CAMPAIGN_RATE_PER_TICK` envios por ciclo de 1 s (padrão 40, abaixo dos 80/s da Meta). Sem Redis no caminho crítico;
+> BullMQ volta a ser avaliado se um único processo de API deixar de dar conta.
+
 **Isolamento por cliente (fairness):** em vez de uma fila por cliente (milhares de filas = overhead), usamos um **agendador (Dispatcher)** que libera lotes por campanha em *round-robin* ponderado, respeitando a capacidade de cada portfolio; os workers de envio consomem uma fila compartilhada com rate limit por número. Efeito: um cliente com 2.000 envios não bloqueia outro com 250. (Alternativa paga: BullMQ Pro "groups".)
 
 ### 1.4 Frontend: **Next.js (App Router) + React + Tailwind + shadcn/ui**

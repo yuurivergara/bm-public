@@ -32,7 +32,7 @@
 | POST | `/tenants/:id/onboarding-links` | Gera link de uso único para Embedded Signup | Op |
 | GET | `/tenants/:id/onboarding-runs` | Histórico de onboarding e passos | V |
 | POST | `/tenants/:id/onboarding-runs/:runId/retry` | Re-executa passos com falha | Op |
-| POST | `/tenants/:id/assets/partner-share` | Cadastra ativos compartilhados por parceria (IDs) e valida acesso | Op |
+| POST | `/tenants/:id/assets/partner-share` | Cadastra ativos compartilhados por parceria (IDs) e valida acesso. Opcional `appId` + `appSecret` (32 hex): **app próprio do cliente** (ponte até o Tech Provider) — o secret assina as chamadas (`appsecret_proof`) e valida os webhooks desse app | Op |
 | POST | `/tenants/:id/assets/sync` | Força sincronização | Op |
 | GET | `/onboarding/migration` | Painel da migração dos clientes atuais | V |
 
@@ -102,6 +102,13 @@
 ### 1.9 Campanhas
 | Método | Rota | Descrição | Perm. |
 |---|---|---|---|
+> **Implementado no S5** com rotas por cliente: `GET/POST /tenants/:id/campaigns`, `GET /tenants/:id/campaigns/:cid`
+> (`counts`: total, pending, sent, delivered, read, failed, skipped, uncertain, cancelled), `GET …/preview` (mensagem com
+> os dados do 1º contato), `GET …/recipients?status&after&limit` (telefone mascarado), `POST …/start | /pause | /resume |
+> /cancel` e `GET /tenants/:id/capacity` (limite × margem, usados em 24 h, disponível, números). Corpo de criação:
+> `{name, listId, templateId, phoneNumberId, variables: {"1": {source: name|attribute|fixed, value?, fallback?}}}`.
+> Iniciar congela a audiência (sem suprimidos e inválidos). Ainda não: agendamento, ondas, relatório, reenvio de `uncertain`.
+
 | GET | `/campaigns` | Todas as campanhas (filtros: cliente, status, período) | V |
 | POST | `/tenants/:id/campaigns` | Cria rascunho | Op |
 | POST | `/campaigns/:id/preflight` | Validações + estimativa de custo e duração | Op |

@@ -18,6 +18,7 @@ import { Public } from '../auth/decorators';
 import { AppError } from '../common/http';
 import { APP_CONFIG, type AppConfig } from '../config/config';
 import { WebhookIngestService } from './webhook-ingest.service';
+import { WebhookSecretsService } from './webhook-secrets.service';
 
 /**
  * Webhooks da Meta (docs/04-endpoints.md §2.1, docs/10-meta-referencia.md).
@@ -32,6 +33,7 @@ export class MetaWebhooksController {
   constructor(
     @Inject(APP_CONFIG) private readonly config: AppConfig,
     private readonly ingest: WebhookIngestService,
+    private readonly secrets: WebhookSecretsService,
   ) {}
 
   @Get()
@@ -55,14 +57,20 @@ export class MetaWebhooksController {
     @Headers('x-hub-signature-256') signature: string | undefined,
   ) {
     const secret = this.config.META_APP_SECRET;
-    if (!secret) {
-      throw new AppError(
-        HttpStatus.SERVICE_UNAVAILABLE,
-        'webhooks_not_configured',
-        'META_APP_SECRET não configurado',
-      );
-    }
-    if (!req.rawBody || !verifyMetaSignature(req.rawBody, signature, secret)) {
+    const raw = req.rawBody;
+    const valid =
+      !!raw &&
+      ((!!secret && verifyMetaSignature(raw, signature, secret)) ||
+        // app próprio do cliente: assinado com o App Secret dele (webhook-secrets.service.ts)
+        (await this.secrets.verifyWithConnectionSecret(raw, signature, req.body)));
+    if (!valid) {
+      if (!secret) {
+        throw new AppError(
+          HttpStatus.SERVICE_UNAVAILABLE,
+          'webhooks_not_configured',
+          'META_APP_SECRET não configurado',
+        );
+      }
       this.logger.warn('webhook Meta com assinatura ausente ou inválida');
       throw new AppError(HttpStatus.UNAUTHORIZED, 'invalid_signature', 'Assinatura inválida');
     }
