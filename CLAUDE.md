@@ -75,7 +75,10 @@ Definição de pronto: lint, typecheck e testes verdes; CI (`.github/workflows/c
 - ✅ Painel web (`apps/web`, Vite + React + TanStack Query + Tailwind), servido pela própria API (`WEB_DIST_DIR`,
   fallback SPA). Login com TOTP, clientes, conexão (token + app próprio do cliente), número, modelos, importação,
   opt-out, disparos (assistente + acompanhamento), estoque e usuários. 205 testes no total.
-- ⏳ Próximo: produção na VPS com a Meta real; depois ondas/agendamento/relatórios e Tech Provider (S7–S8).
+- ✅ Produção (23/11): pilha `bm-prod` em `/opt/bm-prod`, https://painel.179-197-76-7.sslip.io, Graph API real;
+  promovida do staging com `deploy/prod-init.sh [sha7]` (o Actions só implanta o staging). Pendente do Yuri:
+  `set-meta-app.sh --prod`, `set-backup-r2.sh --prod`, parar Vendra/bms/copy-whats.
+- ⏳ Próximo: ondas/agendamento/relatórios, reenvio de `uncertain`, Tech Provider + Embedded Signup (S7–S8).
 - 🟡 Infra (D-16/D-16a/D-16b): staging no ar em https://bm.179-197-76-7.sslip.io (VPS BMS, `/opt/bm-platform`,
   projeto compose `bm-platform`, com meta-sim). Deploy oficial: Actions → GHCR → `ssh deploy@… "deploy <sha>"`
   (comando forçado `deploy/bm-deploy.sh`); ponte manual `deploy/vps-deploy.sh`; teste ponta a ponta
