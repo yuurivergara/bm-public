@@ -463,9 +463,22 @@ describe('capacidade e pausas automáticas', () => {
     sim.state.errors.length = 0;
   });
 
+  it('modelo em uso por campanha ativa não pode ser apagado; depois vira DELETED (histórico)', async () => {
+    const running = ids[ids.length - 1] as string; // pausada no teste anterior
+    const del = await api(owner, 'DELETE', `/templates/${templateId}`, {});
+    expect(del.statusCode).toBe(409);
+    expect(del.json().code).toBe('template_in_use');
+    await api(operator, 'POST', `/campaigns/${running}/cancel`, {});
+    await h.admin`update meta_connections set status = 'active' where tenant_id = ${tenantId}`;
+    expect((await api(owner, 'DELETE', `/templates/${templateId}`, {})).statusCode).toBe(200);
+    const [t] = await h.admin<{ status: string }[]>`
+      select status from message_templates where id = ${templateId}`;
+    expect(t?.status).toBe('DELETED');
+  });
+
   it('cancelar marca pendentes como cancelados; outro cliente não vê nada', async () => {
-    const id = ids[ids.length - 1] as string;
-    const r = await api(operator, 'POST', `/campaigns/${id}/cancel`, {});
+    const id = ids[ids.length - 1] as string; // cancelada no teste anterior
+    const r = await api(viewer, 'GET', `/campaigns/${id}`);
     expect(r.json()).toMatchObject({ status: 'cancelled', counts: { pending: 0 } });
     expect(r.json().counts.cancelled).toBeGreaterThan(0);
     expect((await api(operator, 'POST', `/campaigns/${id}/resume`, {})).statusCode).toBe(409);

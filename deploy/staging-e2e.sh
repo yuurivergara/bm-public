@@ -123,6 +123,40 @@ for _ in $(seq 1 20); do
 done
 [[ "$ST" == APPROVED ]] || fail "template não foi aprovado via webhook (status=$ST)"
 ok "template $TPL aprovado via webhook message_template_status_update"
+
+echo "== 9. campanha: lista → criar → iniciar → envio → status por webhook (sim)"
+CSV="$(mktemp)"; trap 'rm -f "$JAR" "$CSV"' EXIT
+printf 'telefone,nome\n+5511988880001,Ana\n+5511988880002,\n+5511988880999,Bruno\n' >"$CSV"
+IMP="$(curl -fsS -b "$JAR" -c "$JAR" -X POST "$BASE/api/v1/tenants/$TENANT2/imports" \
+  --form-string listName="e2e $TPL" --form-string originDeclaration=customers \
+  --form-string legalBasis=legitimo_interesse --form-string declarationAccepted=true \
+  --form-string mapping='{"phone":"telefone","name":"nome"}' \
+  -F "file=@$CSV;filename=e2e.csv" | jq -r .id)"
+imp_wait() { local st; for _ in $(seq 1 30); do
+  st="$(api "$BASE/api/v1/tenants/$TENANT2/imports/$IMP" | jq -r .status)"; [[ "$st" == "$1" ]] && return 0
+  [[ "$st" == failed ]] && fail "importação falhou"; sleep 1; done; fail "importação parada em $st"; }
+imp_wait preview
+api -X POST "$BASE/api/v1/tenants/$TENANT2/imports/$IMP/confirm" -d '{}' >/dev/null
+imp_wait confirmed
+LIST="$(api "$BASE/api/v1/tenants/$TENANT2/imports/$IMP" | jq -r .listId)"
+PHONE_ID="$(jq -r .phoneNumber.id <<<"$NUM")"
+CAMP="$(api -X POST "$BASE/api/v1/tenants/$TENANT2/campaigns" -d "$(jq -nc --arg l "$LIST" --arg t "$TID" --arg p "$PHONE_ID" --arg n "e2e $TPL" '{
+  name:$n, listId:$l, templateId:$t, phoneNumberId:$p,
+  variables:{nome:{source:"name",fallback:"cliente"}, pedido:{source:"fixed",value:"123"}}}')" | jq -r .id)"
+C="$BASE/api/v1/tenants/$TENANT2/campaigns/$CAMP"
+api "$C/preview" | jq -e '.body | test("Olá, Ana! Seu pedido 123")' >/dev/null || fail "prévia errada: $(api "$C/preview")"
+api -X POST "$C/start" -d '{}' >/dev/null
+for _ in $(seq 1 30); do
+  R="$(api "$C")"
+  [[ "$(jq -r .status <<<"$R")" == completed && "$(jq -r '.counts.read + .counts.failed' <<<"$R")" == 3 ]] && break
+  sleep 1
+done
+jq -e '.status == "completed" and .counts.read == 2 and .counts.failed == 1' <<<"$R" >/dev/null \
+  || fail "campanha não concluiu como esperado: $(jq -c '{status, counts}' <<<"$R")"
+ok "campanha enviada: $(jq -c .counts <<<"$R")"
+api "$BASE/api/v1/tenants/$TENANT2/capacity" | jq -e '.used24h >= 2' >/dev/null || fail "capacidade não contou os envios"
+ok "capacidade de 24 h contabilizada"
+
 api -X DELETE "$BASE/api/v1/tenants/$TENANT2/templates/$TID" -d "{}" >/dev/null
 ok "template de teste apagado (Meta + local)"
 

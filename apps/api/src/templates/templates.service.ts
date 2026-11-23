@@ -22,7 +22,7 @@ import type { RequestContext } from '../common/request-context';
 import { AuditService } from '../core/audit.service';
 import { DB, KEY_PROVIDER, META_CLIENT } from '../core/tokens';
 
-const { and, asc, eq, notInArray } = orm;
+const { and, asc, eq, notInArray, sql } = orm;
 
 export interface TemplateCreateInput extends CreateTemplateInput {
   /** WABA local (uuid). */
@@ -203,6 +203,20 @@ export class TemplatesService {
       return r;
     });
     if (!row) throw new NotFoundException('Template não encontrado');
+    const usage = await withTenant(this.handle.db, tenantId, (tx) =>
+      tx.execute<{ active: number; total: number }>(sql`
+        select count(*) filter (where status in ('running', 'paused'))::int as active,
+               count(*)::int as total
+          from campaigns where template_id = ${templateId}`),
+    );
+    const { active = 0, total = 0 } = [...usage][0] ?? {};
+    if (active > 0) {
+      throw new AppError(
+        HttpStatus.CONFLICT,
+        'template_in_use',
+        'Este modelo está sendo usado por uma campanha em andamento ou pausada: cancele-a antes de apagar',
+      );
+    }
     if (row.metaTemplateId && row.status !== 'DELETED') {
       const waba = await this.wabaWithToken(tenantId, row.wabaId);
       try {
@@ -214,7 +228,15 @@ export class TemplatesService {
       }
     }
     await withTenant(this.handle.db, tenantId, async (tx) => {
-      await tx.delete(messageTemplates).where(eq(messageTemplates.id, templateId));
+      if (total > 0) {
+        // campanhas antigas apontam para ele: mantém a linha (histórico), marcada como apagada
+        await tx
+          .update(messageTemplates)
+          .set({ status: 'DELETED', updatedAt: new Date() })
+          .where(eq(messageTemplates.id, templateId));
+      } else {
+        await tx.delete(messageTemplates).where(eq(messageTemplates.id, templateId));
+      }
       await this.audit.record(
         ctx,
         {
