@@ -302,7 +302,7 @@ export class NumbersService {
     tenantId: string,
     assignmentId: string,
     inventoryId: string,
-    waba: { id: string; metaWabaId: string; token: string },
+    waba: { id: string; metaWabaId: string; token: string; appSecret?: string },
     input: AssignInput,
     ctx: RequestContext,
   ) {
@@ -315,11 +315,13 @@ export class NumbersService {
 
     let metaPhoneId: string;
     try {
-      ({ id: metaPhoneId } = await this.meta.withToken(waba.token).addPhoneNumber(waba.metaWabaId, {
-        cc,
-        phoneNumber: national,
-        verifiedName: input.verifiedName,
-      }));
+      ({ id: metaPhoneId } = await this.meta
+        .withToken(waba.token, waba.appSecret)
+        .addPhoneNumber(waba.metaWabaId, {
+          cc,
+          phoneNumber: national,
+          verifiedName: input.verifiedName,
+        }));
     } catch (err) {
       throw metaWriteError(err);
     }
@@ -377,7 +379,7 @@ export class NumbersService {
     const p = await this.phoneWithToken(tenantId, phoneId);
     this.assertStep(p.registrationStatus, ['added', 'code_requested']);
     try {
-      await this.meta.withToken(p.token).requestCode(p.metaPhoneNumberId, input);
+      await this.meta.withToken(p.token, p.appSecret).requestCode(p.metaPhoneNumberId, input);
     } catch (err) {
       // §10.2: 136024 = número já verificado → pula direto para o registro
       if (err instanceof MetaApiError && err.code === 136024) {
@@ -397,7 +399,7 @@ export class NumbersService {
     const p = await this.phoneWithToken(tenantId, phoneId);
     this.assertStep(p.registrationStatus, ['code_requested']);
     await this.callMeta(tenantId, phoneId, () =>
-      this.meta.withToken(p.token).verifyCode(p.metaPhoneNumberId, code),
+      this.meta.withToken(p.token, p.appSecret).verifyCode(p.metaPhoneNumberId, code),
     );
     await this.setStep(tenantId, phoneId, 'code_verified', ctx, 'number.verify_code', {});
     return this.tenantNumber(tenantId);
@@ -424,7 +426,7 @@ export class NumbersService {
       );
     }
     await this.callMeta(tenantId, phoneId, () =>
-      this.meta.withToken(p.token).registerPhone(p.metaPhoneNumberId, pin),
+      this.meta.withToken(p.token, p.appSecret).registerPhone(p.metaPhoneNumberId, pin),
     );
     await withTenant(this.handle.db, tenantId, async (tx) => {
       await tx
@@ -484,7 +486,7 @@ export class NumbersService {
       const p = await this.phoneWithToken(tenantId, current.phoneNumberId);
       if (p.registrationStatus === 'registered') {
         try {
-          await this.meta.withToken(p.token).deregisterPhone(p.metaPhoneNumberId);
+          await this.meta.withToken(p.token, p.appSecret).deregisterPhone(p.metaPhoneNumberId);
         } catch (err) {
           deregisterError = metaWriteError(err).message;
         }
@@ -624,6 +626,7 @@ export class NumbersService {
           registrationStatus: phoneNumbers.registrationStatus,
           pinEnc: phoneNumbers.twoStepPinEnc,
           tokenEnc: metaConnections.accessTokenEnc,
+          appSecretEnc: metaConnections.appSecretEnc,
           connStatus: metaConnections.status,
         })
         .from(phoneNumbers)
@@ -634,7 +637,11 @@ export class NumbersService {
     });
     if (!row) throw new NotFoundException('Número não encontrado');
     this.assertConnection(row.connStatus);
-    return { ...row, token: await decryptSecret(row.tokenEnc, this.keys) };
+    return {
+      ...row,
+      token: await decryptSecret(row.tokenEnc, this.keys),
+      appSecret: row.appSecretEnc ? await decryptSecret(row.appSecretEnc, this.keys) : undefined,
+    };
   }
 
   private async wabaWithToken(tx: Tx, wabaId: string) {
@@ -643,6 +650,7 @@ export class NumbersService {
         id: whatsappAccounts.id,
         metaWabaId: whatsappAccounts.metaWabaId,
         tokenEnc: metaConnections.accessTokenEnc,
+        appSecretEnc: metaConnections.appSecretEnc,
         connStatus: metaConnections.status,
       })
       .from(whatsappAccounts)
@@ -654,6 +662,7 @@ export class NumbersService {
       id: w.id,
       metaWabaId: w.metaWabaId,
       token: await decryptSecret(w.tokenEnc, this.keys),
+      appSecret: w.appSecretEnc ? await decryptSecret(w.appSecretEnc, this.keys) : undefined,
     };
   }
 

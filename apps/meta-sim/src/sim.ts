@@ -53,12 +53,26 @@ export interface RecordedRequest {
   at: string;
 }
 
+export interface SimMessage {
+  wamid: string;
+  phoneId: string;
+  wabaId: string;
+  to: string;
+  template: { name: string; language: string; parameters: unknown[] };
+  at: string;
+}
+
 export interface MetaSimOptions {
   appSecret: string;
   graphVersion: string;
   appId?: string;
   /** Destino dos webhooks emitidos (ex.: https://api/webhooks/meta). */
   webhookUrl?: string;
+  /**
+   * Staging: depois de aceitar uma mensagem, emite sozinho os webhooks sent → delivered → read
+   * (destinos terminados em 999 recebem `failed` 131026). Precisa de webhookUrl.
+   */
+  autoStatus?: boolean;
   logger?: boolean;
 }
 
@@ -94,10 +108,13 @@ export class MetaSimState {
   readonly verificationCodes = new Map<string, string>();
   /** Tentativas de register/deregister por número (limite: 10 em 72 h, §10.4). */
   readonly registrationAttempts = new Map<string, number[]>();
+  /** Mensagens aceitas em POST /{phone}/messages, por wamid. */
+  readonly messages = new Map<string, SimMessage>();
 
   reset() {
     this.verificationCodes.clear();
     this.registrationAttempts.clear();
+    this.messages.clear();
     this.objects.clear();
     this.tokens.clear();
     this.subscribedApps.clear();
@@ -524,6 +541,129 @@ export function createMetaSim(opts: MetaSimOptions) {
     });
   }
 
+  // ---------------------------------------------------------------- envio (§8, §12)
+  const bodyPlaceholders = (components: unknown) => {
+    const body = (Array.isArray(components) ? components : []).find(
+      (c) => String((c as { type?: string }).type).toUpperCase() === 'BODY',
+    ) as { text?: string } | undefined;
+    return [...new Set((body?.text ?? '').match(/\{\{\s*[\w]+\s*\}\}/g) ?? [])].length;
+  };
+
+  app.post<{ Params: { id: string } }>(`/${v}/:id/messages`, async (req, reply) => {
+    const token = auth(req, reply);
+    if (!token) return reply;
+    const phone = state.objects.get(req.params.id);
+    if (phone?.kind !== 'phone_number' || !state.canAccess(token, phone.data.id)) {
+      return notFound(reply, req.params.id);
+    }
+    if (!token.scopes.includes('whatsapp_business_messaging')) {
+      return graphError(reply, 403, { message: '(#10) Permission denied', code: 10 });
+    }
+    if (phone.data.status !== 'CONNECTED') {
+      return graphError(reply, 400, { message: 'Account not registered', code: 133010 });
+    }
+    const b = (req.body ?? {}) as {
+      messaging_product?: string;
+      to?: string;
+      type?: string;
+      template?: {
+        name?: string;
+        language?: { code?: string };
+        components?: { type?: string; parameters?: unknown[] }[];
+      };
+    };
+    if (b.messaging_product !== 'whatsapp') return invalidParam(reply, 'messaging_product');
+    if (typeof b.to !== 'string' || !/^\+?\d{8,15}$/.test(b.to)) return invalidParam(reply, 'to');
+    if (b.type !== 'template' || !b.template?.name || !b.template.language?.code) {
+      return graphError(reply, 400, { message: 'Required parameter is missing', code: 131008 });
+    }
+    const tpl = templatesOf(String(phone.parentId)).find(
+      (t) => t.data.name === b.template?.name && t.data.language === b.template?.language?.code,
+    );
+    if (!tpl || tpl.data.status !== 'APPROVED') {
+      return graphError(reply, 404, {
+        message: 'Template name does not exist in the translation',
+        code: 132001,
+      });
+    }
+    const params =
+      b.template.components?.find((c) => String(c.type).toLowerCase() === 'body')?.parameters ?? [];
+    if (params.length !== bodyPlaceholders(tpl.data.components)) {
+      return graphError(reply, 400, {
+        message: 'Number of parameters does not match the expected number of params',
+        code: 132000,
+      });
+    }
+    const wamid = `wamid.${Buffer.from(randomUUID()).toString('base64')}`;
+    const msg: SimMessage = {
+      wamid,
+      phoneId: phone.data.id,
+      wabaId: String(phone.parentId),
+      to: b.to.replace(/^\+/, ''),
+      template: {
+        name: tpl.data.name as string,
+        language: tpl.data.language as string,
+        parameters: params,
+      },
+      at: new Date().toISOString(),
+    };
+    state.messages.set(wamid, msg);
+    if (opts.autoStatus && opts.webhookUrl) {
+      const url = opts.webhookUrl;
+      const fail = msg.to.endsWith('999');
+      const steps = fail ? ['failed'] : ['sent', 'delivered', 'read'];
+      steps.forEach((st, i) => {
+        setTimeout(
+          () => void emitStatus(url, msg, st).catch(() => undefined),
+          300 * (i + 1) + Math.floor(Math.random() * 200),
+        );
+      });
+    }
+    return {
+      messaging_product: 'whatsapp',
+      contacts: [{ input: b.to, wa_id: msg.to }],
+      messages: [{ id: wamid, message_status: 'accepted' }],
+    };
+  });
+
+  const metadataOf = (phoneId: string) => {
+    const phone = state.objects.get(phoneId);
+    return {
+      display_phone_number: String(phone?.data.display_phone_number ?? '').replace(/\D/g, ''),
+      phone_number_id: phoneId,
+    };
+  };
+
+  /** Webhook de status (§3.1); `failed` leva errors[] com o código pedido (padrão 131026). */
+  function emitStatus(url: string, msg: SimMessage, status: string, errorCode?: number) {
+    const ts = String(Math.floor(Date.now() / 1000));
+    const st: Record<string, unknown> = {
+      id: msg.wamid,
+      status,
+      timestamp: ts,
+      recipient_id: msg.to,
+    };
+    if (status === 'sent') {
+      st.pricing = { billable: true, pricing_model: 'PMP', type: 'regular', category: 'marketing' };
+    }
+    if (status === 'failed') {
+      const code = errorCode ?? 131026;
+      st.errors = [
+        {
+          code,
+          title: 'Message undeliverable',
+          message: 'Message undeliverable',
+          error_data: { details: 'sim' },
+        },
+      ];
+    }
+    return emitWebhook(url, {
+      entryId: msg.wabaId,
+      field: 'messages',
+      value: { messaging_product: 'whatsapp', metadata: metadataOf(msg.phoneId), statuses: [st] },
+    });
+  }
+
   app.get('/healthz', async () => ({ status: 'ok' }));
 
   // ---------------------------------------------------------------- controle (/_sim)
@@ -562,6 +702,96 @@ export function createMetaSim(opts: MetaSimOptions) {
   });
 
   app.get('/_sim/requests', async () => state.requests);
+
+  app.get('/_sim/messages', async () => [...state.messages.values()]);
+
+  /** Emite o webhook de status de uma mensagem aceita (sent | delivered | read | failed). */
+  app.post<{
+    Params: { wamid: string };
+    Body: { status: string; errorCode?: number; url?: string };
+  }>('/_sim/messages/:wamid/status', async (req, reply) => {
+    const msg = state.messages.get(req.params.wamid);
+    if (!msg) return reply.status(404).send({ error: 'mensagem desconhecida' });
+    const url = req.body.url ?? opts.webhookUrl;
+    if (!url) return reply.status(400).send({ error: 'webhookUrl não configurada' });
+    return emitStatus(url, msg, req.body.status, req.body.errorCode);
+  });
+
+  /** Mensagem recebida de um usuário (§3.2): texto ou toque em botão de resposta rápida. */
+  app.post<{
+    Body: {
+      phoneId: string;
+      from: string;
+      text?: string;
+      button?: string;
+      contextWamid?: string;
+      url?: string;
+    };
+  }>('/_sim/inbound', async (req, reply) => {
+    const phone = state.objects.get(req.body.phoneId);
+    if (phone?.kind !== 'phone_number')
+      return reply.status(404).send({ error: 'número desconhecido' });
+    const url = req.body.url ?? opts.webhookUrl;
+    if (!url) return reply.status(400).send({ error: 'webhookUrl não configurada' });
+    const from = req.body.from.replace(/\D/g, '');
+    const base = {
+      from,
+      id: `wamid.${Buffer.from(randomUUID()).toString('base64')}`,
+      timestamp: String(Math.floor(Date.now() / 1000)),
+    };
+    const message = req.body.button
+      ? {
+          context: {
+            from: metadataOf(phone.data.id).display_phone_number,
+            id: req.body.contextWamid ?? 'wamid.sim',
+          },
+          ...base,
+          type: 'button',
+          button: { payload: req.body.button, text: req.body.button },
+        }
+      : { ...base, type: 'text', text: { body: req.body.text ?? '' } };
+    return emitWebhook(url, {
+      entryId: String(phone.parentId),
+      field: 'messages',
+      value: {
+        messaging_product: 'whatsapp',
+        metadata: metadataOf(phone.data.id),
+        contacts: [{ profile: { name: 'Usuário (sim)' }, wa_id: from }],
+        messages: [message],
+      },
+    });
+  });
+
+  /** Preferência de marketing do usuário (§3.3): stop | resume. */
+  app.post<{ Body: { phoneId: string; waId: string; value: 'stop' | 'resume'; url?: string } }>(
+    '/_sim/user-preferences',
+    async (req, reply) => {
+      const phone = state.objects.get(req.body.phoneId);
+      if (phone?.kind !== 'phone_number')
+        return reply.status(404).send({ error: 'número desconhecido' });
+      const url = req.body.url ?? opts.webhookUrl;
+      if (!url) return reply.status(400).send({ error: 'webhookUrl não configurada' });
+      const waId = req.body.waId.replace(/\D/g, '');
+      return emitWebhook(url, {
+        entryId: String(phone.parentId),
+        field: 'user_preferences',
+        value: {
+          messaging_product: 'whatsapp',
+          metadata: metadataOf(phone.data.id),
+          contacts: [{ wa_id: waId }],
+          user_preferences: [
+            {
+              wa_id: waId,
+              detail: `User requested to ${req.body.value} marketing messages`,
+              category: 'marketing_messages',
+              value: req.body.value,
+              timestamp: Math.floor(Date.now() / 1000),
+            },
+          ],
+        },
+      });
+    },
+  );
 
   /** Código que o provedor de números receberia por SMS/voz (para testes). */
   app.get<{ Params: { id: string } }>('/_sim/verification-codes/:id', async (req, reply) => {

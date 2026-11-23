@@ -24,8 +24,13 @@ afterAll(async () => {
  * - meta_asset_routes: só identificadores Meta → tenant; o processador de webhooks precisa
  *   resolver o tenant antes de ter contexto (0002_meta_assets.sql).
  */
-// contact_import_jobs: fila do worker, só IDs (migration 0004).
-const RLS_EXEMPT = new Set(['audit_logs', 'meta_asset_routes', 'contact_import_jobs']);
+// contact_import_jobs / campaign_dispatch: filas dos workers, só IDs (migrations 0004 e 0006).
+const RLS_EXEMPT = new Set([
+  'audit_logs',
+  'meta_asset_routes',
+  'contact_import_jobs',
+  'campaign_dispatch',
+]);
 
 describe('migrations', () => {
   it('são idempotentes', async () => {
@@ -226,6 +231,7 @@ const FK_INDEX_EXEMPT = new Set<string>([
   'message_templates.message_templates_created_by_fkey',
   'number_assignments.number_assignments_assigned_by_fkey',
   'suppressions.suppressions_created_by_fkey',
+  'campaigns.campaigns_created_by_fkey',
   // tabelas pequenas (dezenas a milhares de linhas) ou de vida curta
   'contact_import_jobs.contact_import_jobs_tenant_id_fkey',
   'contact_imports.contact_imports_list_fk',

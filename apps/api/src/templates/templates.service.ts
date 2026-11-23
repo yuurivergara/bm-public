@@ -22,7 +22,7 @@ import type { RequestContext } from '../common/request-context';
 import { AuditService } from '../core/audit.service';
 import { DB, KEY_PROVIDER, META_CLIENT } from '../core/tokens';
 
-const { and, asc, eq, notInArray } = orm;
+const { and, asc, eq, notInArray, sql } = orm;
 
 export interface TemplateCreateInput extends CreateTemplateInput {
   /** WABA local (uuid). */
@@ -30,7 +30,7 @@ export interface TemplateCreateInput extends CreateTemplateInput {
 }
 
 /** Palavras de opt-out (docs/02-arquitetura.md §6.4) aceitas no botão de quick reply. */
-const OPT_OUT_LABEL = /sair|parar|pare|stop|cancelar|descadastr|n[ãa]o quero|unsubscribe/i;
+export const OPT_OUT_LABEL = /sair|parar|pare|stop|cancelar|descadastr|n[ãa]o quero|unsubscribe/i;
 
 interface Button {
   type?: string;
@@ -89,7 +89,9 @@ export class TemplatesService {
 
     let created: { id: string; status?: string; category?: string };
     try {
-      created = await this.meta.withToken(waba.token).createTemplate(waba.metaWabaId, input);
+      created = await this.meta
+        .withToken(waba.token, waba.appSecret)
+        .createTemplate(waba.metaWabaId, input);
     } catch (err) {
       throw metaWriteError(err);
     }
@@ -154,7 +156,7 @@ export class TemplatesService {
     for (const w of wabas) {
       let remote: MetaTemplate[];
       try {
-        remote = await this.meta.withToken(w.token).listTemplates(w.metaWabaId);
+        remote = await this.meta.withToken(w.token, w.appSecret).listTemplates(w.metaWabaId);
       } catch (err) {
         const e = metaWriteError(err);
         errors.push({ wabaId: w.metaWabaId, code: e.code, message: e.message });
@@ -201,18 +203,40 @@ export class TemplatesService {
       return r;
     });
     if (!row) throw new NotFoundException('Template não encontrado');
+    const usage = await withTenant(this.handle.db, tenantId, (tx) =>
+      tx.execute<{ active: number; total: number }>(sql`
+        select count(*) filter (where status in ('running', 'paused'))::int as active,
+               count(*)::int as total
+          from campaigns where template_id = ${templateId}`),
+    );
+    const { active = 0, total = 0 } = [...usage][0] ?? {};
+    if (active > 0) {
+      throw new AppError(
+        HttpStatus.CONFLICT,
+        'template_in_use',
+        'Este modelo está sendo usado por uma campanha em andamento ou pausada: cancele-a antes de apagar',
+      );
+    }
     if (row.metaTemplateId && row.status !== 'DELETED') {
       const waba = await this.wabaWithToken(tenantId, row.wabaId);
       try {
         await this.meta
-          .withToken(waba.token)
+          .withToken(waba.token, waba.appSecret)
           .deleteTemplate(waba.metaWabaId, { name: row.name, hsmId: row.metaTemplateId });
       } catch (err) {
         throw metaWriteError(err);
       }
     }
     await withTenant(this.handle.db, tenantId, async (tx) => {
-      await tx.delete(messageTemplates).where(eq(messageTemplates.id, templateId));
+      if (total > 0) {
+        // campanhas antigas apontam para ele: mantém a linha (histórico), marcada como apagada
+        await tx
+          .update(messageTemplates)
+          .set({ status: 'DELETED', updatedAt: new Date() })
+          .where(eq(messageTemplates.id, templateId));
+      } else {
+        await tx.delete(messageTemplates).where(eq(messageTemplates.id, templateId));
+      }
       await this.audit.record(
         ctx,
         {
@@ -259,6 +283,7 @@ export class TemplatesService {
           id: whatsappAccounts.id,
           metaWabaId: whatsappAccounts.metaWabaId,
           tokenEnc: metaConnections.accessTokenEnc,
+          appSecretEnc: metaConnections.appSecretEnc,
           connStatus: metaConnections.status,
         })
         .from(whatsappAccounts)
@@ -272,6 +297,7 @@ export class TemplatesService {
         id: r.id,
         metaWabaId: r.metaWabaId,
         token: await decryptSecret(r.tokenEnc, this.keys),
+        appSecret: r.appSecretEnc ? await decryptSecret(r.appSecretEnc, this.keys) : undefined,
       });
     }
     return out;

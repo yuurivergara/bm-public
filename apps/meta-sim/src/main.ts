@@ -5,7 +5,8 @@ import { createMetaSim, type FixtureInput } from './sim';
  * Servidor do meta-sim.
  *   SIM_APP_SECRET, SIM_GRAPH_VERSION (obrigatórios), SIM_APP_ID, SIM_WEBHOOK_URL,
  *   SIM_FIXTURES_FILE (JSON: FixtureInput | FixtureInput[]), PORT (padrão 4010),
- *   SIM_DEMO_TOKEN (cria um portfolio/WABA/número de demonstração acessíveis por esse token).
+ *   SIM_DEMO_TOKEN (cria um portfolio/WABA/número de demonstração acessíveis por esse token),
+ *   SIM_AUTO_STATUS=true (emite sent/delivered/read sozinho após cada envio).
  * Rotas de controle em /_sim — não exponha o simulador publicamente.
  */
 async function main() {
@@ -19,6 +20,7 @@ async function main() {
     graphVersion: SIM_GRAPH_VERSION,
     appId: SIM_APP_ID,
     webhookUrl: SIM_WEBHOOK_URL,
+    autoStatus: process.env.SIM_AUTO_STATUS === 'true',
     logger: true,
   });
   if (SIM_FIXTURES_FILE) {

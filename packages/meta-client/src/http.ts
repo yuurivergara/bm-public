@@ -50,13 +50,21 @@ export class GraphHttp {
     accessToken: string,
     method: HttpMethod,
     path: string,
-    init: { query?: Record<string, string | number | boolean | undefined>; body?: unknown } = {},
+    init: {
+      query?: Record<string, string | number | boolean | undefined>;
+      body?: unknown;
+      /** App Secret do app dono do token (app próprio do cliente); padrão: o da plataforma. */
+      appSecret?: string;
+    } = {},
   ): Promise<GraphResponse<T>> {
     const url = new URL(`${this.baseUrl}/${this.opts.graphVersion}/${path.replace(/^\/+/, '')}`);
     for (const [k, v] of Object.entries(init.query ?? {})) {
       if (v !== undefined) url.searchParams.set(k, String(v));
     }
-    url.searchParams.set('appsecret_proof', appSecretProof(accessToken, this.opts.appSecret));
+    url.searchParams.set(
+      'appsecret_proof',
+      appSecretProof(accessToken, init.appSecret ?? this.opts.appSecret),
+    );
 
     const headers: Record<string, string> = { authorization: `Bearer ${accessToken}` };
     let body: string | undefined;

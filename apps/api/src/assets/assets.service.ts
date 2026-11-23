@@ -37,6 +37,8 @@ export interface ConnectInput {
   accessToken: string;
   method: 'partner_share' | 'manual';
   subscribeWebhooks: boolean;
+  appId?: string;
+  appSecret?: string;
 }
 
 interface FetchedAssets {
@@ -150,6 +152,7 @@ export class AssetsService {
         input.businessId,
         input.wabaId,
         input.subscribeWebhooks,
+        input.appSecret,
       );
     } catch (err) {
       throw toAppError(err);
@@ -160,6 +163,7 @@ export class AssetsService {
     );
 
     const tokenEnc = await encryptSecret(input.accessToken, this.keys);
+    const appSecretEnc = input.appSecret ? await encryptSecret(input.appSecret, this.keys) : null;
     return withTenant(this.handle.db, tenantId, async (tx) => {
       const now = new Date();
       // Conexão: reaproveita a da WABA, se já existir; senão cria.
@@ -177,6 +181,10 @@ export class AssetsService {
         lastValidatedAt: now,
         lastError: null,
         updatedAt: now,
+        // sem app próprio informado = token do app da plataforma
+        metaAppId: input.appId ?? null,
+        appSecretEnc,
+        appSecretKeyId: appSecretEnc ? this.keys.keyId : null,
       };
       if (connectionId) {
         await tx
@@ -252,6 +260,7 @@ export class AssetsService {
           businessId: businessPortfolios.metaBusinessId,
           connectionId: metaConnections.id,
           tokenEnc: metaConnections.accessTokenEnc,
+          appSecretEnc: metaConnections.appSecretEnc,
         })
         .from(whatsappAccounts)
         .innerJoin(businessPortfolios, eq(businessPortfolios.id, whatsappAccounts.portfolioId))
@@ -262,8 +271,9 @@ export class AssetsService {
     const errors: SyncError[] = [];
     for (const t of targets) {
       const token = await decryptSecret(t.tokenEnc, this.keys);
+      const appSecret = t.appSecretEnc ? await decryptSecret(t.appSecretEnc, this.keys) : undefined;
       try {
-        const fetched = await this.fetchAssets(token, t.businessId, t.wabaId, false);
+        const fetched = await this.fetchAssets(token, t.businessId, t.wabaId, false, appSecret);
         await withTenant(this.handle.db, tenantId, async (tx) => {
           const now = new Date();
           const portfolioId = await this.upsertPortfolio(tx, tenantId, fetched.business, now);
@@ -334,8 +344,9 @@ export class AssetsService {
     businessId: string,
     wabaId: string,
     subscribe: boolean,
+    appSecret?: string,
   ): Promise<FetchedAssets> {
-    const api = this.meta.withToken(token);
+    const api = this.meta.withToken(token, appSecret);
     const waba = await api.getWaba(wabaId);
     const [business, phones] = await Promise.all([
       api.getBusiness(businessId),

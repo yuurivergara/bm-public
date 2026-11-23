@@ -1577,3 +1577,24 @@ em revisão / limite diário de edições), `2388040` (limite de caracteres), `2
   `user_preferences` (§3.3) e envio de marketing a quem parou → status `failed` com **`131050`**. "Interested / Not interested"
   **não** gera webhook.
 - ⚠️ O botão "Marketing opt-out" que o WhatsApp Manager oferece na criação manual não aparece na doc da API lida.
+
+## 12. Envio de template (`POST /{phone-number-id}/messages`) — S5
+
+Fontes (lidas em 2026-11-23): `templates/overview` ("Example template send payload", "Named parameters",
+"Positional parameters"), `messages/send-messages` ("WhatsApp user phone number formats"),
+`reference/whatsapp-business-phone-number/message-api`, `templates/components`. A antiga página
+`messages/template-messages` redireciona para `templates/overview`.
+
+- Corpo: `messaging_product: "whatsapp"`, `recipient_type: "individual"`, `to`, `type: "template"`,
+  `template: { name, language: { code }, components }`.
+- Variáveis do corpo: `{ "type": "body", "parameters": [{ "type": "text", "text": "…" }] }` na ordem de `{{1}}`, `{{2}}`…
+  (template `parameter_format: positional`, padrão). Template **nomeado** (`{{first_name}}`): cada parâmetro leva também
+  `"parameter_name": "first_name"`.
+- `to`: aceita `+`, hífen, parênteses e espaços; a Meta **recomenda fortemente** o `+` com código do país (sem ele, o código
+  do país do número remetente é prefixado). Enviamos E.164 com `+`.
+- Botão de URL com variável (envio): `{ "type": "button", "sub_type": "url", "index": "0", "parameters": [...] }`, valores
+  com *percent-encoding*.
+- ⚠️ **Não confirmados** (não implementados; o painel recusa esses templates em campanhas): parâmetros de **cabeçalho**
+  de texto e de mídia (imagem/vídeo/documento por link ou id), parâmetros de botão **quick_reply** (`payload`), e
+  `biz_opaque_callback_data` (existência e tamanho).
+- `language.policy`: não encontrado nas páginas lidas (não enviamos).

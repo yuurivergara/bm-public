@@ -19,8 +19,22 @@ const connectSchema = z
     accessToken: z.string().trim().min(20).max(1024),
     method: z.enum(['partner_share', 'manual']).default('partner_share'),
     subscribeWebhooks: z.boolean().default(true),
+    /**
+     * App próprio do cliente (ponte até o Tech Provider): ID e App Secret do app dele. O secret
+     * assina as chamadas (appsecret_proof) e valida os webhooks desse app; cifrado, nunca devolvido.
+     */
+    appId: metaId.optional(),
+    appSecret: z
+      .string()
+      .trim()
+      .regex(/^[0-9a-f]{32}$/i, 'App Secret inválido (32 caracteres hexadecimais)')
+      .optional(),
   })
-  .strict();
+  .strict()
+  .refine((v) => !v.appSecret === !v.appId, {
+    message: 'Informe o ID do app e o App Secret juntos',
+    path: ['appSecret'],
+  });
 
 @Controller('tenants/:tenantId/assets')
 export class AssetsController {

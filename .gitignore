@@ -7,3 +7,6 @@ coverage/
 !.env.example
 *.log
 .DS_Store
+
+# cópias de trabalho de agentes do Claude Code
+.claude/worktrees/
